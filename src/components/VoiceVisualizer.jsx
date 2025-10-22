@@ -5,8 +5,12 @@ import { BACKEND_API_WS } from '../constants';
 export default function VoiceVisualizer({ onClose }) {
   const canvasRef = useRef(null);
   const [status, setStatus] = useState('');
+  const startedRef = useRef(false);
 
   useEffect(() => {
+    if (startedRef.current) return;
+    startedRef.current = true;
+
     let audioCtx;
     let analyser;
     let source;
@@ -169,6 +173,7 @@ export default function VoiceVisualizer({ onClose }) {
   start();
 
     return () => {
+      startedRef.current = false;
       if (rafId) cancelAnimationFrame(rafId);
       try {
         if (scriptNode) {

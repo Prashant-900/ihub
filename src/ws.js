@@ -4,10 +4,11 @@ export default class WSClient {
     this.url = url;
     this.ws = null;
     this.listeners = new Set();
+    this.closed = false;
   }
 
   connect() {
-    if (this.ws) return;
+    if (this.ws || this.closed) return;
     this.ws = new WebSocket(this.url);
     this.ws.addEventListener('open', () => console.log('WS open', this.url));
     this.ws.addEventListener('message', (ev) => {
@@ -21,8 +22,7 @@ export default class WSClient {
     this.ws.addEventListener('close', () => {
       console.log('WS closed');
       this.ws = null;
-      // auto reconnect after short delay
-      setTimeout(() => this.connect(), 1000);
+      if (!this.closed) setTimeout(() => this.connect(), 1000);
     });
     this.ws.addEventListener('error', (e) => console.warn('WS error', e));
   }
@@ -39,6 +39,7 @@ export default class WSClient {
   }
 
   close() {
+    this.closed = true;
     if (this.ws) this.ws.close();
   }
 }
