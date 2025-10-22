@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { FiX } from 'react-icons/fi';
+import { BACKEND_API_WS } from '../constants';
 
 export default function VoiceVisualizer({ onClose }) {
   const canvasRef = useRef(null);
@@ -11,11 +12,43 @@ export default function VoiceVisualizer({ onClose }) {
     let source;
     let rafId;
     let stream;
+    let scriptNode;
+    let sendInterval;
+    let wsVad;
 
-    // VAD state
-    let speaking = false;
-    let speechStart = 0;
-    let silenceCounter = 0;
+    const toBase64Int16 = (int16Arr) => {
+      const uint8 = new Uint8Array(int16Arr.buffer);
+      let CHUNK = 0x8000;
+      let binary = '';
+      for (let i = 0; i < uint8.length; i += CHUNK) {
+        binary += String.fromCharCode.apply(null, Array.from(uint8.subarray(i, i + CHUNK)));
+      }
+      return btoa(binary);
+    };
+
+    const downsampleBuffer = (buffer, sampleRate, outSampleRate) => {
+      if (outSampleRate === sampleRate) return buffer;
+      const sampleRateRatio = sampleRate / outSampleRate;
+      const newLength = Math.round(buffer.length / sampleRateRatio);
+      const result = new Float32Array(newLength);
+      let offsetResult = 0;
+      let offsetBuffer = 0;
+      while (offsetResult < result.length) {
+        const nextOffsetBuffer = Math.round((offsetResult + 1) * sampleRateRatio);
+        // use average value between the two offsets
+        let accum = 0, count = 0;
+        for (let i = offsetBuffer; i < nextOffsetBuffer && i < buffer.length; i++) {
+          accum += buffer[i];
+          count++;
+        }
+        result[offsetResult] = count ? accum / count : 0;
+        offsetResult++;
+        offsetBuffer = nextOffsetBuffer;
+      }
+      return result;
+    };
+
+  // VAD state handled by server; local visualization only
 
     const start = async () => {
       try {
@@ -34,16 +67,6 @@ export default function VoiceVisualizer({ onClose }) {
 
   // const sampleRate = audioCtx.sampleRate;
 
-        // Attempt to load webrtcvad; if not available, we'll fallback
-        let VAD = null;
-        try {
-          const mod = await import('webrtcvad');
-          VAD = mod && (mod.default || mod);
-          // Note: browser support may vary; if VAD API is different, we'll fallback
-        } catch (err) {
-          console.warn('VAD load failed, using RMS fallback', err);
-          VAD = null;
-        }
 
         const draw = () => {
           analyser.getFloatTimeDomainData(data);
@@ -65,44 +88,76 @@ export default function VoiceVisualizer({ onClose }) {
           }
           ctx.stroke();
 
-          // compute RMS
-          let sum = 0;
-          for (let i = 0; i < data.length; i++) sum += data[i] * data[i];
-          const rms = Math.sqrt(sum / data.length);
-
-          // VAD detection: attempt to use VAD if available, otherwise RMS threshold
-          let isSpeech = false;
-          if (VAD && typeof VAD === 'function') {
-            // webrtcvad usage in browser may not be supported; skip using it here
-            isSpeech = rms > 0.01; // fallback threshold
-          } else {
-            // simple amplitude-based VAD
-            isSpeech = rms > 0.02; // tuned threshold
-          }
-
-          if (isSpeech) {
-            silenceCounter = 0;
-            if (!speaking) {
-              speaking = true;
-              speechStart = performance.now();
-              setStatus('Speech started');
-            }
-          } else {
-            if (speaking) {
-              silenceCounter++;
-              // consider speech ended after ~300ms of silence (assuming 60fps -> ~18 frames)
-              if (silenceCounter > 18) {
-                speaking = false;
-                const durationMs = performance.now() - speechStart;
-                console.log('Speech duration (ms):', durationMs);
-                setStatus('Speech ended: ' + (Math.round(durationMs) + ' ms'));
-                silenceCounter = 0;
-              }
-            }
-          }
+          // No local VAD here; server will emit speech start/end events
 
           rafId = requestAnimationFrame(draw);
         };
+
+        // setup ScriptProcessor to capture audio for streaming
+        const spBufferSize = 4096;
+        scriptNode = audioCtx.createScriptProcessor(spBufferSize, 1, 1);
+        const captureBuffer = [];
+        scriptNode.onaudioprocess = (evt) => {
+          const input = evt.inputBuffer.getChannelData(0);
+          // copy to captureBuffer
+          captureBuffer.push(new Float32Array(input));
+        };
+        source.connect(scriptNode);
+        scriptNode.connect(audioCtx.destination);
+
+        // connect to backend ws-vad
+        const base = `${BACKEND_API_WS}/ws-vad`;
+        const wsUrl = base
+        try {
+          wsVad = new WebSocket(wsUrl);
+          wsVad.addEventListener('open', () => console.log('VAD WS open', wsUrl));
+          wsVad.addEventListener('close', () => console.log('VAD WS closed'));
+          wsVad.addEventListener('error', (e) => console.warn('VAD WS error', e));
+          wsVad.addEventListener('message', (ev) => {
+            try {
+              const msg = JSON.parse(ev.data);
+              if (msg && msg.event === 'speech_started') setStatus('Speech started');
+              if (msg && msg.event === 'speech_ended') setStatus('Speech ended: ' + Math.round((msg.duration || 0) * 1000) + ' ms');
+            } catch (err) {
+              console.warn('Malformed VAD message', err);
+            }
+          });
+        } catch (e) {
+          console.warn('Failed to open VAD WS', e);
+          wsVad = null;
+        }
+
+        // periodically send collected audio (every 200ms)
+        sendInterval = setInterval(() => {
+          if (!captureBuffer.length) return;
+          // concat buffers
+          let totalLen = 0;
+          for (let b of captureBuffer) totalLen += b.length;
+          const merged = new Float32Array(totalLen);
+          let offset = 0;
+          for (let b of captureBuffer) {
+            merged.set(b, offset);
+            offset += b.length;
+          }
+          captureBuffer.length = 0;
+
+          // downsample to 16000
+          const outRate = 16000;
+          const sampleRate = audioCtx.sampleRate;
+          const down = downsampleBuffer(merged, sampleRate, outRate);
+
+          // convert to int16
+          const int16 = new Int16Array(down.length);
+          for (let i = 0; i < down.length; i++) {
+            let s = Math.max(-1, Math.min(1, down[i]));
+            int16[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
+          }
+
+          const b64 = toBase64Int16(int16);
+          if (wsVad && wsVad.readyState === WebSocket.OPEN) {
+            wsVad.send(JSON.stringify({ type: 'audio', sampleRate: outRate, data: b64 }));
+          }
+        }, 60);
 
         draw();
       } catch (err) {
@@ -111,21 +166,35 @@ export default function VoiceVisualizer({ onClose }) {
       }
     };
 
-    start();
+  start();
 
-    // capture references for cleanup
-    const _stream = stream;
-    const _audioCtx = audioCtx;
-    const _rafId = rafId;
     return () => {
-      if (_rafId) cancelAnimationFrame(_rafId);
+      if (rafId) cancelAnimationFrame(rafId);
       try {
-        if (_stream) _stream.getTracks().forEach((t) => t.stop());
+        if (scriptNode) {
+          scriptNode.disconnect();
+          scriptNode.onaudioprocess = null;
+        }
+      } catch (err) {
+        console.warn('Error disconnecting scriptNode', err);
+      }
+      try {
+        if (sendInterval) clearInterval(sendInterval);
+      } catch (err) {
+        console.warn('Error clearing sendInterval', err);
+      }
+      try {
+        if (wsVad) wsVad.close();
+      } catch (err) {
+        console.warn('Error closing wsVad', err);
+      }
+      try {
+        if (stream) stream.getTracks().forEach((t) => t.stop());
       } catch (err) {
         console.warn('Error stopping stream tracks', err);
       }
       try {
-        if (_audioCtx) _audioCtx.close();
+        if (audioCtx) audioCtx.close();
       } catch (err) {
         console.warn('Error closing audio context', err);
       }

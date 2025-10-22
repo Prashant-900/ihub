@@ -42,3 +42,6 @@ export const backgroundMap = {
     "Rei" : "bg_2",
     "Reze" : "bg_3",
 }
+
+export const BACKEND_API = "http://127.0.0.1:8000"
+export const BACKEND_API_WS = "WS://127.0.0.1:8000"
