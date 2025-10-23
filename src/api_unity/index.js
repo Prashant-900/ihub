@@ -16,12 +16,21 @@ function sendMessage(gameObject, method, param) {
   return false;
 }
 
-export function sendTrigger(gameObject, triggerName) {
-  return sendMessage(gameObject, 'TriggerByName', triggerName);
+export function sendTrigger(triggerName, speed = 1.0) {
+  try {
+    const jsonData = JSON.stringify({
+      name: triggerName,
+      speed: Math.max(0.1, Math.min(2.0, speed))
+    });
+    return sendMessage("Epsilon", 'TriggerByName', jsonData);
+  } catch (e) {
+    console.error('sendTrigger failed', e);
+    return false;
+  }
 }
 
-export function playVoice(gameObject = 'WebGLInputManagerGameObject') {
-  return sendMessage(gameObject, 'PlayVoiceFromJS');
+export function playVoice() {
+  return sendMessage("WebGLInputManagerGameObject", 'PlayVoiceFromJS');
 }
 
 export function sendAudioJSON(jsonStr) {
@@ -58,18 +67,20 @@ export function sendAudioBuffer(samples, sampleRate) {
   }
 }
 
-export function updateMouthVolume(gameObject = 'WebGLInputManager', volume) {
-  return sendMessage(gameObject, 'UpdateMouthVolume', volume.toString());
+export function updateMouthVolume(volume) {
+  return sendMessage("WebGLInputManagerGameObject", 'UpdateMouthVolume', volume.toString());
 }
 
-export function changeExpression(gameObject, intVal) {
-  return sendMessage(gameObject, 'ChangeExpression', intVal.toString());
+export function changeExpression(intVal) {
+  return sendMessage("Epsilon", 'ChangeExpression', intVal.toString());
 }
 
-export function setBackground(spriteName, gameObject = 'bg') {
+export function setBackground(spriteName) {
   if (!spriteName) return false;
-  return sendMessage(gameObject, 'SetBackground', spriteName);
+  return sendMessage("bg", 'SetBackground', spriteName);
 }
+
+
 
 export default {
   sendTrigger,
@@ -77,5 +88,5 @@ export default {
   sendAudioJSON,
   updateMouthVolume,
   changeExpression,
-  setBackground,
+  setBackground
 };

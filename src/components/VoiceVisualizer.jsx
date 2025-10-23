@@ -1,11 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { FiX } from 'react-icons/fi';
 import { BACKEND_API_WS } from '../constants';
+import { executeAnimationTimeline } from '../api_unity/anim_controller';
 
 export default function VoiceVisualizer({ onClose }) {
   const canvasRef = useRef(null);
   const [status, setStatus] = useState('');
   const startedRef = useRef(false);
+  const cleanupRef = useRef(null);
 
   useEffect(() => {
     if (startedRef.current) return;
@@ -121,7 +123,12 @@ export default function VoiceVisualizer({ onClose }) {
             try {
               const msg = JSON.parse(ev.data);
               if (msg && msg.event === 'speech_started') setStatus('Speech started');
-              if (msg && msg.event === 'speech_ended') setStatus('Speech ended: ' + Math.round((msg.duration || 0) * 1000) + ' ms');
+              if (msg && msg.event === 'speech_ended') {
+                setStatus('Speech ended: ' + Math.round((msg.duration || 0) * 1000) + ' ms');
+                  console.log('Executing animation timeline');
+                  executeAnimationTimeline(msg.timeline);
+                
+              }
             } catch (err) {
               console.warn('Malformed VAD message', err);
             }
@@ -172,7 +179,7 @@ export default function VoiceVisualizer({ onClose }) {
 
   start();
 
-    return () => {
+    const cleanup = () => {
       startedRef.current = false;
       if (rafId) cancelAnimationFrame(rafId);
       try {
@@ -189,7 +196,10 @@ export default function VoiceVisualizer({ onClose }) {
         console.warn('Error clearing sendInterval', err);
       }
       try {
-        if (wsVad) wsVad.close();
+        if (wsVad) {
+          console.log('Closing VAD WebSocket');
+          wsVad.close();
+        }
       } catch (err) {
         console.warn('Error closing wsVad', err);
       }
@@ -204,12 +214,18 @@ export default function VoiceVisualizer({ onClose }) {
         console.warn('Error closing audio context', err);
       }
     };
+
+    cleanupRef.current = cleanup;
+    return cleanup;
   }, []);
 
   return (
     <div className="fixed left-1/2 transform -translate-x-1/2 bottom-20 z-50 w-full max-w-4xl px-4">
       <div className="flex items-center bg-black/40 backdrop-blur-md border border-white/10 rounded-lg shadow-lg px-3 py-3">
-        <button onClick={onClose} className="mr-3 text-white p-2 rounded-md hover:bg-white/10"><FiX className="w-5 h-5"/></button>
+        <button onClick={() => {
+          if (cleanupRef.current) cleanupRef.current();
+          onClose();
+        }} className="mr-3 text-white p-2 rounded-md hover:bg-white/10"><FiX className="w-5 h-5"/></button>
         <canvas ref={canvasRef} width={800} height={100} className="flex-1 rounded-md" />
         <div className="ml-3 text-xs text-white/80">{status}</div>
       </div>

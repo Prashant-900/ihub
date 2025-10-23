@@ -68,6 +68,9 @@ async def websocket_endpoint(websocket: WebSocket):
         manager.disconnect(websocket)
 
 
-from voice.vad_ws import register_vad
+try:
+    from vad_ws import register_vad
+except ImportError:
+    from .vad_ws import register_vad
 
 register_vad(app)

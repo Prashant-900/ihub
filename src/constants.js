@@ -1,18 +1,18 @@
 export const triggers = [
-  { name: "madtrigger", description: "Character becomes angry or frustrated." },
-  { name: "embarrassedtrigger", description: "Character shows embarrassment or shyness." },
-  { name: "headnodtrigger", description: "Character nods head in agreement or acknowledgment." },
-  { name: "confusedtrigger", description: "Character looks puzzled or unsure." },
-  { name: "disappointedtrigger", description: "Character shows disappointment or sadness." },
-  { name: "happytrigger", description: "Character smiles or shows general happiness." },
-  { name: "winktrigger", description: "Character performs a playful wink." },
-  { name: "happyagreetrigger", description: "Character smiles and nods in cheerful agreement." },
-  { name: "lightmadtrigger", description: "Character appears slightly annoyed or irritated." },
-  { name: "sadtiredtrigger", description: "Character looks both sad and tired." },
-  { name: "sadtrigger", description: "Character shows sadness or sorrow." },
-  { name: "happynotrigger", description: "Character smiles while shaking head, suggesting amused disagreement." },
-  { name: "bothertrigger", description: "Character appears bothered or uncomfortable." },
-  { name: "shaketrigger", description: "Character shakes head in disapproval or disbelief." }
+  { name: "madtrigger", description: "Character becomes angry or frustrated.", time: 1.9},
+  { name: "embarrassedtrigger", description: "Character shows embarrassment or shyness.", time: 2.867},
+  { name: "headnodtrigger", description: "Character nods head in agreement or acknowledgment.", time: 2.033},
+  { name: "confusedtrigger", description: "Character looks puzzled or unsure.", time: 2.533},
+  { name: "disappointedtrigger", description: "Character shows disappointment or sadness.", time: 1.667},
+  { name: "happytrigger", description: "Character smiles or shows general happiness.", time: 2.7},
+  { name: "winktrigger", description: "Character performs a playful wink.", time: 2.33},
+  { name: "happyagreetrigger", description: "Character smiles and nods in cheerful agreement.", time: 1.867},
+  { name: "lightmadtrigger", description: "Character appears slightly annoyed or irritated.", time: 1.9},
+  { name: "sadtiredtrigger", description: "Character looks both sad and tired.", time: 2.533},
+  { name: "sadtrigger", description: "Character shows sadness or sorrow.", time: 2.1},
+  { name: "happynotrigger", description: "Character smiles while shaking head, suggesting amused disagreement.", time: 2.433},
+  { name: "bothertrigger", description: "Character appears bothered or uncomfortable.", time: 1.533},
+  { name: "shaketrigger", description: "Character shakes head in disapproval or disbelief.", time: 3.033}
 ];
 
 
