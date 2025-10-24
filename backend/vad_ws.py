@@ -5,12 +5,14 @@ import numpy as np
 import time
 import torch
 from pipeline.pipeline import Pipeline
+from database import db
+import os
+import uuid
 
 def register_vad(app):
     @app.websocket("/ws-vad")
     async def websocket_vad(websocket: WebSocket):
         await websocket.accept()
-        print("VAD socket connected")
 
         device = torch.device("cpu")
         pipeline = Pipeline(device=device)
@@ -29,11 +31,39 @@ def register_vad(app):
                 try:
                     msg = await websocket.receive_text()
                 except WebSocketDisconnect:
-                    print("VAD socket disconnected by client")
                     break
 
                 try:
                     payload = json.loads(msg)
+                    if payload.get("type") == "text":
+                        user_text = payload.get('text', '')
+                        try:
+                            result = pipeline.handle_input(audio_frames=[], user_text=user_text)
+                            # send user_message event
+                            try:
+                                user_ev = {
+                                    'event': 'user_message',
+                                    'text': user_text or result.get('user_text') or '',
+                                    'created_at': (result.get('user_row') or {}).get('created_at') if result.get('user_row') else None,
+                                }
+                                await websocket.send_text(json.dumps(user_ev))
+                            except Exception:
+                                pass
+                            # send ai_response event
+                            try:
+                                ai_payload = {
+                                    'event': 'ai_response',
+                                    'response': result.get('ai_text'),
+                                    'timeline': result.get('timeline'),
+                                    'audio_id': result.get('audio_id'),
+                                    'created_at': (result.get('ai_row') or {}).get('created_at') if result.get('ai_row') else None,
+                                }
+                                await websocket.send_text(json.dumps(ai_payload))
+                            except Exception:
+                                pass
+                        except Exception:
+                            pass
+                        continue
                     if payload.get("type") != "audio":
                         continue
 
@@ -60,29 +90,54 @@ def register_vad(app):
                         if not speaking:
                             speaking = True
                             speech_start = time.time()
-                            print("VAD: speech started")
                             await websocket.send_text(json.dumps({"event": "speech_started"}))
                         silence_frames = 0
                     else:
                         if speaking and silence_frames >= SILENCE_THRESHOLD:
                             speaking = False
                             duration = time.time() - speech_start
-                            print(f"VAD: speech ended, duration={duration:.2f}s")
 
                             # Process audio through pipeline
-                            response = pipeline.process_audio(audio_buffer)
-                            response.update({
-                                "event": "speech_ended",
-                                "duration": duration
-                            })
-                            await websocket.send_text(json.dumps(response))
+                            # Concatenate audio and create user message record
+                            if len(audio_buffer) == 0:
+                                user_audio = np.array([], dtype=np.float32)
+                            else:
+                                user_audio = np.concatenate(audio_buffer)
+
+                            # Transcribe and handle via pipeline
+                            try:
+                                result = pipeline.handle_input(audio_frames=audio_buffer, user_text=None)
+                                # send user_message event
+                                try:
+                                    user_ev = {
+                                            'event': 'user_message',
+                                            'text': (result.get('user_row') or {}).get('text') if result.get('user_row') else (result.get('user_text') or ''),
+                                            'created_at': (result.get('user_row') or {}).get('created_at') if result.get('user_row') else None,
+                                        }
+                                    await websocket.send_text(json.dumps(user_ev))
+                                except Exception:
+                                    pass
+                                # send ai_response event
+                                try:
+                                    ai_payload = {
+                                        'event': 'ai_response',
+                                        'response': result.get('ai_text'),
+                                        'timeline': result.get('timeline'),
+                                        'audio_id': result.get('audio_id'),
+                                        'duration': duration,
+                                        'created_at': (result.get('ai_row') or {}).get('created_at') if result.get('ai_row') else None,
+                                    }
+                                    await websocket.send_text(json.dumps(ai_payload))
+                                except Exception:
+                                    pass
+                            except Exception:
+                                pass
 
                             audio_buffer = []
                             speech_frames = 0
                             silence_frames = 0
 
-                except Exception as e:
-                    print("Error processing audio:", e)
+                except Exception:
                     continue
         finally:
-            print("VAD socket closed")
+            pass

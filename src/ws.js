@@ -10,21 +10,20 @@ export default class WSClient {
   connect() {
     if (this.ws || this.closed) return;
     this.ws = new WebSocket(this.url);
-    this.ws.addEventListener('open', () => console.log('WS open', this.url));
+    this.ws.addEventListener('open', () => void 0);
     this.ws.addEventListener('message', (ev) => {
       try {
         const data = ev.data;
         this.listeners.forEach((l) => l(data));
-      } catch (e) {
-        console.warn('ws msg parse error', e);
+      } catch {
+        void 0;
       }
     });
     this.ws.addEventListener('close', () => {
-      console.log('WS closed');
       this.ws = null;
       if (!this.closed) setTimeout(() => this.connect(), 1000);
     });
-    this.ws.addEventListener('error', (e) => console.warn('WS error', e));
+    this.ws.addEventListener('error', () => void 0);
   }
 
   send(text) {

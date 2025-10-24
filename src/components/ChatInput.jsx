@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { FiSend, FiMic } from 'react-icons/fi';
 import VoiceVisualizer from './VoiceVisualizer';
 
-export default function ChatInput({ onSend }) {
+export default function ChatInput({ onSend, pipelineClient }) {
   const [text, setText] = useState('');
   const [showVisualizer, setShowVisualizer] = useState(false);
 
@@ -15,7 +15,7 @@ export default function ChatInput({ onSend }) {
   };
 
   if (showVisualizer) {
-    return <VoiceVisualizer onClose={() => setShowVisualizer(false)} />;
+    return <VoiceVisualizer onClose={() => setShowVisualizer(false)} pipelineClient={pipelineClient} />;
   }
 
   return (

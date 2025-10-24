@@ -7,12 +7,10 @@ function sendMessage(gameObject, method, param) {
     try {
       u.SendMessage(gameObject, method, param);
       return true;
-    } catch (e) {
-      console.error('SendMessage error', e);
+    } catch {
       return false;
     }
   }
-  console.warn('Unity not ready for SendMessage');
   return false;
 }
 
@@ -23,14 +21,36 @@ export function sendTrigger(triggerName, speed = 1.0) {
       speed: Math.max(0.1, Math.min(2.0, speed))
     });
     return sendMessage("Epsilon", 'TriggerByName', jsonData);
-  } catch (e) {
-    console.error('sendTrigger failed', e);
+  } catch {
     return false;
   }
 }
 
 export function playVoice() {
   return sendMessage("WebGLInputManagerGameObject", 'PlayVoiceFromJS');
+}
+
+// Helper to check if Unity SendMessage is available
+export function isUnityReady() {
+  const u = getUnity();
+  return !!(u && typeof u.SendMessage === 'function');
+}
+
+// Wait for Unity to become ready, up to timeoutMs (resolves true if ready, false if timed out)
+export async function waitForUnityReady(timeoutMs = 3000) {
+  const start = Date.now();
+  if (isUnityReady()) return true;
+  return new Promise((resolve) => {
+    const interval = setInterval(() => {
+      if (isUnityReady()) {
+        clearInterval(interval);
+        resolve(true);
+      } else if (Date.now() - start > timeoutMs) {
+        clearInterval(interval);
+        resolve(false);
+      }
+    }, 150);
+  });
 }
 
 export function sendAudioJSON(jsonStr) {
@@ -44,15 +64,26 @@ export async function sendAudioFile(file) {
     const arrayBuffer = await file.arrayBuffer();
     const AudioCtx = window.__unityAudioContext || (window.AudioContext || window.webkitAudioContext);
     const audioCtx = window.__unityAudioContext || new AudioCtx();
-    const decoded = await audioCtx.decodeAudioData(arrayBuffer);
+    window.__unityAudioContext = audioCtx;
+    let decoded;
+    try {
+      decoded = await audioCtx.decodeAudioData(arrayBuffer.slice(0));
+    } catch {
+      try {
+        decoded = await new Promise((resolve, reject) => {
+          audioCtx.decodeAudioData(arrayBuffer.slice(0), resolve, (e) => reject(e));
+        });
+      } catch {
+        throw new Error('Audio decode failed');
+      }
+    }
     const samples = decoded.getChannelData(0);
     const data = {
       samples: Array.from(samples),
       sampleRate: decoded.sampleRate,
     };
     return sendAudioJSON(JSON.stringify(data));
-  } catch (e) {
-    console.error('sendAudioFile failed', e);
+  } catch {
     return false;
   }
 }
@@ -61,14 +92,13 @@ export function sendAudioBuffer(samples, sampleRate) {
   try {
     const data = { samples: Array.from(samples), sampleRate };
     return sendAudioJSON(JSON.stringify(data));
-  } catch (e) {
-    console.error('sendAudioBuffer failed', e);
+  } catch {
     return false;
   }
 }
 
 export function updateMouthVolume(volume) {
-  return sendMessage("WebGLInputManagerGameObject", 'UpdateMouthVolume', volume.toString());
+  return sendMessage("Epsilon", 'UpdateMouthVolume', volume.toString());
 }
 
 export function changeExpression(intVal) {
@@ -85,8 +115,12 @@ export function setBackground(spriteName) {
 export default {
   sendTrigger,
   playVoice,
+  sendAudioBuffer,
+  sendAudioFile,
   sendAudioJSON,
   updateMouthVolume,
   changeExpression,
-  setBackground
+  setBackground,
+  isUnityReady,
+  waitForUnityReady,
 };

@@ -3,7 +3,7 @@ import { FiX } from 'react-icons/fi';
 import { BACKEND_API_WS } from '../constants';
 import { executeAnimationTimeline } from '../api_unity/anim_controller';
 
-export default function VoiceVisualizer({ onClose }) {
+export default function VoiceVisualizer({ onClose, pipelineClient }) {
   const canvasRef = useRef(null);
   const [status, setStatus] = useState('');
   const startedRef = useRef(false);
@@ -12,15 +12,18 @@ export default function VoiceVisualizer({ onClose }) {
   useEffect(() => {
     if (startedRef.current) return;
     startedRef.current = true;
+    const pipelineClientRef = { current: pipelineClient };
 
-    let audioCtx;
+  let audioCtx;
     let analyser;
     let source;
     let rafId;
     let stream;
     let scriptNode;
     let sendInterval;
+    let suspended = false;
     let wsVad;
+    let pipelineOffRef = { current: null };
 
     const toBase64Int16 = (int16Arr) => {
       const uint8 = new Uint8Array(int16Arr.buffer);
@@ -111,36 +114,79 @@ export default function VoiceVisualizer({ onClose }) {
         source.connect(scriptNode);
         scriptNode.connect(audioCtx.destination);
 
-        // connect to backend ws-vad
-        const base = `${BACKEND_API_WS}/ws-vad`;
-        const wsUrl = base
-        try {
-          wsVad = new WebSocket(wsUrl);
-          wsVad.addEventListener('open', () => console.log('VAD WS open', wsUrl));
-          wsVad.addEventListener('close', () => console.log('VAD WS closed'));
-          wsVad.addEventListener('error', (e) => console.warn('VAD WS error', e));
-          wsVad.addEventListener('message', (ev) => {
-            try {
-              const msg = JSON.parse(ev.data);
-              if (msg && msg.event === 'speech_started') setStatus('Speech started');
-              if (msg && msg.event === 'speech_ended') {
-                setStatus('Speech ended: ' + Math.round((msg.duration || 0) * 1000) + ' ms');
-                  console.log('Executing animation timeline');
-                  executeAnimationTimeline(msg.timeline);
-                
+        // If a pipelineClient (WSClient) is provided use it for message I/O
+          if (pipelineClientRef.current) {
+          try {
+              pipelineOffRef.current = pipelineClientRef.current.onMessage((msg) => {
+              let data = msg;
+              try { data = JSON.parse(msg); } catch { void 0; }
+              if (data && data.event === 'speech_started') setStatus('Speech started');
+              if (data && data.event === 'speech_ended') {
+                setStatus('Speech ended: ' + Math.round((data.duration || 0) * 1000) + ' ms');
+                if (data.timeline) {
+                  suspended = true;
+                  try {
+                    executeAnimationTimeline(data.timeline).then(() => { suspended = false; }).catch(() => { suspended = false; });
+                  } catch { suspended = false; }
+                }
               }
-            } catch (err) {
-              console.warn('Malformed VAD message', err);
-            }
-          });
-        } catch (e) {
-          console.warn('Failed to open VAD WS', e);
-          wsVad = null;
+              if (data && data.event === 'ai_response') {
+                setStatus('Assistant response received');
+                if (data.timeline) {
+                  suspended = true;
+                  try {
+                    executeAnimationTimeline(data.timeline).then(() => { suspended = false; }).catch(() => { suspended = false; });
+                  } catch { suspended = false; }
+                }
+              }
+            });
+          } catch {
+            void 0;
+          }
+        } else {
+          // connect to backend ws-vad directly
+          const base = `${BACKEND_API_WS}/ws-vad`;
+          const wsUrl = base;
+          try {
+            wsVad = new WebSocket(wsUrl);
+            wsVad.addEventListener('open', () => void 0);
+            wsVad.addEventListener('close', () => void 0);
+            wsVad.addEventListener('error', () => void 0);
+            wsVad.addEventListener('message', (ev) => {
+              try {
+                const msg = JSON.parse(ev.data);
+                if (msg && msg.event === 'speech_started') setStatus('Speech started');
+                if (msg && msg.event === 'speech_ended') {
+                  setStatus('Speech ended: ' + Math.round((msg.duration || 0) * 1000) + ' ms');
+                  if (msg.timeline) {
+                    suspended = true;
+                    try {
+                      executeAnimationTimeline(msg.timeline).then(() => { suspended = false; }).catch(() => { suspended = false; });
+                    } catch { suspended = false; }
+                  }
+                }
+                if (msg && msg.event === 'ai_response') {
+                  setStatus('Assistant response received');
+                  if (msg.timeline) {
+                    suspended = true;
+                    try {
+                      executeAnimationTimeline(msg.timeline).then(() => { suspended = false; }).catch(() => { suspended = false; });
+                    } catch { suspended = false; }
+                  }
+                }
+              } catch {
+                void 0;
+              }
+            });
+          } catch {
+            wsVad = null;
+          }
         }
 
         // periodically send collected audio (every 200ms)
         sendInterval = setInterval(() => {
           if (!captureBuffer.length) return;
+          if (suspended) return;
           // concat buffers
           let totalLen = 0;
           for (let b of captureBuffer) totalLen += b.length;
@@ -165,14 +211,25 @@ export default function VoiceVisualizer({ onClose }) {
           }
 
           const b64 = toBase64Int16(int16);
-          if (wsVad && wsVad.readyState === WebSocket.OPEN) {
-            wsVad.send(JSON.stringify({ type: 'audio', sampleRate: outRate, data: b64 }));
+          // Prefer pipelineClient for sending audio if available
+          if (pipelineClient) {
+            try {
+              pipelineClientRef.current.send(JSON.stringify({ type: 'audio', sampleRate: outRate, data: b64 }));
+            } catch {
+              // fallthrough - try raw ws
+              if (wsVad && wsVad.readyState === WebSocket.OPEN) {
+                wsVad.send(JSON.stringify({ type: 'audio', sampleRate: outRate, data: b64 }));
+              }
+            }
+          } else {
+            if (wsVad && wsVad.readyState === WebSocket.OPEN) {
+              wsVad.send(JSON.stringify({ type: 'audio', sampleRate: outRate, data: b64 }));
+            }
           }
         }, 60);
 
         draw();
-      } catch (err) {
-        console.error('VoiceVisualizer error', err);
+      } catch {
         setStatus('Microphone access denied');
       }
     };
@@ -187,37 +244,41 @@ export default function VoiceVisualizer({ onClose }) {
           scriptNode.disconnect();
           scriptNode.onaudioprocess = null;
         }
-      } catch (err) {
-        console.warn('Error disconnecting scriptNode', err);
+      } catch {
+        void 0;
       }
       try {
         if (sendInterval) clearInterval(sendInterval);
-      } catch (err) {
-        console.warn('Error clearing sendInterval', err);
+      } catch {
+        void 0;
       }
       try {
         if (wsVad) {
-          console.log('Closing VAD WebSocket');
           wsVad.close();
         }
-      } catch (err) {
-        console.warn('Error closing wsVad', err);
+      } catch {
+        void 0;
       }
       try {
         if (stream) stream.getTracks().forEach((t) => t.stop());
-      } catch (err) {
-        console.warn('Error stopping stream tracks', err);
+      } catch {
+        void 0;
       }
       try {
         if (audioCtx) audioCtx.close();
-      } catch (err) {
-        console.warn('Error closing audio context', err);
+      } catch {
+        void 0;
       }
     };
 
     cleanupRef.current = cleanup;
-    return cleanup;
-  }, []);
+    return () => {
+      try {
+        if (pipelineOffRef.current) pipelineOffRef.current();
+  } catch { /* ignore cleanup errors */ }
+      cleanup();
+    };
+  }, [pipelineClient]);
 
   return (
     <div className="fixed left-1/2 transform -translate-x-1/2 bottom-20 z-50 w-full max-w-4xl px-4">

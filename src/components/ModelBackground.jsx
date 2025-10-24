@@ -20,7 +20,7 @@ export default function ModelBackground() {
       companyName: 'DefaultCompany',
       productName: 'live2d',
       productVersion: '1.0',
-      showBanner: (msg, type) => { if (type === 'error') console.error(msg); }
+      showBanner: () => void 0
     };
 
     // make canvas fill viewport
@@ -33,12 +33,11 @@ export default function ModelBackground() {
     script.onload = () => {
       const createFn = window.createUnityInstance || window.createUnityInstanceAsync || window.createUnityInstanceFromLoader || window.createUnityInstance;
       if (typeof createFn !== 'function') {
-        console.error('Unity loader did not expose createUnityInstance');
         return;
       }
       createFn(canvas, config).then((unityInstance) => {
         window.__unityBgInstance = unityInstance;
-      }).catch((err) => console.error('Unity init error', err));
+      }).catch(() => void 0);
     };
 
     document.body.appendChild(script);

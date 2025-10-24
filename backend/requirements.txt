@@ -8,3 +8,5 @@ SpeechRecognition
 pydub
 omegaconf
 soundfile
+sqlite3
+requests
