@@ -302,10 +302,5 @@ npm run lint
 4. Push to the branch
 5. Open a Pull Request
 
-## 📄 License
-
-This project is part of the iHub initiative.
-
----
 
 **Need Help?** Check the browser console for Unity loader errors and `SendMessage` logs.
