@@ -64,6 +64,8 @@ class DatabaseManager:
 
     def insert_ai_response(self, text, timeline, audio_id=None):
         cur = self._conn.cursor()
+        # text is now a plain string (sentences joined together)
+        # Just store it as-is
         timeline_json = json.dumps(timeline)
         created_at = datetime.utcnow().isoformat() + 'Z'
         cur.execute('INSERT INTO ai_responses (text, timeline, audio_id, created_at) VALUES (?,?,?,?)', (text, timeline_json, audio_id, created_at))

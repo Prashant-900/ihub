@@ -55,10 +55,10 @@ def register_vad(app, manager=None):
                             try:
                                 ai_payload = {
                                     'event': 'ai_response',
-                                    'response': result.get('ai_text'),
+                                    'response': ' '.join([item['sentence'] for item in result.get('ai_text', [])]) if isinstance(result.get('ai_text'), list) else '',
                                     'timeline': result.get('timeline'),
                                     'audio_id': result.get('audio_id'),
-                                    'text': result.get('text'),
+                                    'text': result.get('ai_text'),
                                     'responseMode': response_mode,
                                     'created_at': (result.get('ai_row') or {}).get('created_at') if result.get('ai_row') else None,
                                 }
@@ -122,10 +122,10 @@ def register_vad(app, manager=None):
                                 try:
                                     ai_payload = {
                                         'event': 'ai_response',
-                                        'response': result.get('ai_text'),
+                                        'response': ' '.join([item['sentence'] for item in result.get('ai_text', [])]) if isinstance(result.get('ai_text'), list) else '',
                                         'timeline': result.get('timeline'),
                                         'audio_id': result.get('audio_id'),
-                                        'text': result.get('text'),
+                                        'text': result.get('ai_text'),
                                         'responseMode': 'audio',
                                         'duration': duration,
                                         'created_at': (result.get('ai_row') or {}).get('created_at') if result.get('ai_row') else None,

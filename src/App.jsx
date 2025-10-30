@@ -58,7 +58,7 @@ function App() {
               const startAt = typeof plannedStart === 'number' ? plannedStart : undefined;
               executeAnimationTimeline(d.timeline, startAt ? { startAt } : undefined).catch(() => {});
             }
-            // Handle text box data
+            // Handle text box data - ai_text is now an array of text objects
             if (d.text && Array.isArray(d.text)) {
               d.text.forEach((textItem) => {
                 const { sentence, duration, pos, type } = textItem;

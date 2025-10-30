@@ -81,60 +81,45 @@ class Pipeline:
 
     def handle_input(self, audio_frames: list = None, user_text: str = None, response_mode: str = 'audio'):
         """
-        Process either audio_frames or user_text, persist user message and AI response to DB,
-        create audio file for the AI response in backend/cache (only if response_mode='audio') and return a dict:
-        { 'ai_text': str, 'timeline': list, 'audio_id': str or None, 'user_row': {...}, 'ai_row': {...} }
-        
-        response_mode: 'audio' or 'text' - determines if TTS should be run
+        Processes either audio or text input, persists messages, and returns AI response data.
         """
-        # get transcription / text
+        # Step 1: Transcribe if user_text not provided
         if user_text is None:
             if not audio_frames:
                 user_text = ''
             else:
-                audio_data = np.concatenate(audio_frames) if isinstance(audio_frames, list) and audio_frames else np.array([], dtype=np.float32)
+                audio_data = np.concatenate(audio_frames) if isinstance(audio_frames, list) else np.array([], dtype=np.float32)
                 try:
                     user_text = self.stt.transcribe(audio_data)
                 except Exception:
                     user_text = ''
 
-        # create pipeline response (timeline + text)
-        response = self.process_audio(audio_frames or [])
-        timeline = response.get('timeline') if response and response.get('timeline') is not None else []
-        # If timeline is a dict with 'timeline' key, unwrap it
-        if isinstance(timeline, dict) and 'timeline' in timeline:
-            timeline = timeline['timeline']
-        if not isinstance(timeline, list):
-            timeline = list(timeline) if timeline is not None else []
+        # Step 2: Generate timeline (from animation function directly)
+        timeline = get_animation_timeline()["timeline"]
 
-        # persist user message (log errors if DB operations fail)
-        user_row = None
+        # Step 3: Generate AI text box data
+        ai_text = get_text_box_data(user_text)  # You may replace user_text with your actual AI response later
+
+        # Step 4: Persist user message
+        user_row, ai_row = None, None
         try:
             if db:
-                try:
-                    user_row = db.insert_message('user', user_text or '', None)
-                except Exception:
-                    pass
+                user_row = db.insert_message('user', user_text or '', None)
         except Exception:
             pass
 
-        # create AI reply text (placeholder)
-        ai_text = (user_text or '')
-
-        # Synthesize audio using TTS only if response_mode is 'audio'
+        # Step 5: Synthesize TTS audio only if needed
         cache_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'cache')
         os.makedirs(cache_dir, exist_ok=True)
         audio_id = None
-        
+
         if response_mode == 'audio':
             try:
-                # synthesize_text returns the filename (with extension)
-                # We pass cache_dir (directory), not audio_path (file)
-                filename = synthesize_text(ai_text, cache_dir)
-                # Extract audio_id from filename (remove extension)
+                sentences = ' '.join([s['sentence'] for s in ai_text])
+                filename = synthesize_text(sentences, cache_dir)
                 audio_id = os.path.splitext(filename)[0]
             except Exception:
-                # Fallback to dummy audio if TTS fails
+                # fallback dummy audio only in audio mode
                 try:
                     audio_id = str(uuid.uuid4())
                     audio_path = os.path.join(cache_dir, f"{audio_id}.wav")
@@ -143,40 +128,20 @@ class Pipeline:
                 except Exception:
                     pass
 
-        ai_row = None
+        # Step 6: Save AI response in DB
         try:
             if db:
-                try:
-                    ai_row = db.insert_ai_response(ai_text, timeline, audio_id)
-                except Exception:
-                    pass
+                text = ' '.join(s['sentence'] for s in ai_text)
+                ai_row = db.insert_ai_response(text, timeline, audio_id)
         except Exception:
             pass
 
+        # Step 7: Return final structured data
         return {
             'ai_text': ai_text,
             'timeline': timeline,
             'audio_id': audio_id,
-            'text': get_text_box_data(ai_text),
             'user_row': user_row,
             'ai_row': ai_row,
             'user_text': user_text,
         }
-
-    def process_audio(self, audio_frames: list):
-        """
-        audio_frames: list of np.ndarray float32 chunks [-1,1]
-        Returns dict with transcription + animation timeline
-        """
-        if not audio_frames:
-            audio_data = np.array([], dtype=np.float32)
-        else:
-            audio_data = np.concatenate(audio_frames)
-
-        text = self.stt.transcribe(audio_data)
-
-        response = {
-            "text": text,
-        }
-        response.update(get_animation_timeline())
-        return response
