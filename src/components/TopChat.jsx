@@ -1,8 +1,8 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { FiPlay } from 'react-icons/fi';
+import { FiPlay, FiVolume2, FiMessageSquare } from 'react-icons/fi';
 import { BACKEND_API } from '../constants';
 
-export default function TopChat({ wsClient }) {
+export default function TopChat({ wsClient, responseMode, onResponseModeChange }) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -76,14 +76,6 @@ export default function TopChat({ wsClient }) {
       const AudioCtx = window.__globalAudioContext || (window.AudioContext || window.webkitAudioContext);
       const audioCtx = window.__globalAudioContext || new AudioCtx();
       window.__globalAudioContext = audioCtx;
-      try {
-        // Resume if suspended (user gesture may be required in some browsers)
-        if (audioCtx.state === 'suspended' && typeof audioCtx.resume === 'function') {
-          await audioCtx.resume();
-        }
-      } catch {
-        void 0;
-      }
       const decoded = await audioCtx.decodeAudioData(arrayBuffer);
       const src = audioCtx.createBufferSource();
       src.buffer = decoded;
@@ -103,7 +95,30 @@ export default function TopChat({ wsClient }) {
 
   return (
     <div className="fixed top-6 left-6 z-60 text-sm w-80 bg-white/8 dark:bg-black/30 backdrop-blur-md border border-white/10 p-2 rounded-md">
-      <div className="font-medium text-white mb-2">Conversation</div>
+      <div className="flex items-center justify-between mb-2">
+        <div className="font-medium text-white">Conversation</div>
+        <button
+          onClick={() => onResponseModeChange(responseMode === 'audio' ? 'text' : 'audio')}
+          className={`flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors ${
+            responseMode === 'audio'
+              ? 'bg-blue-600 text-white'
+              : 'bg-green-600 text-white'
+          }`}
+          title={`Response mode: ${responseMode}`}
+        >
+          {responseMode === 'audio' ? (
+            <>
+              <FiVolume2 className="w-3 h-3" />
+              <span>Audio</span>
+            </>
+          ) : (
+            <>
+              <FiMessageSquare className="w-3 h-3" />
+              <span>Text</span>
+            </>
+          )}
+        </button>
+      </div>
       <div ref={containerRef} className="flex flex-col gap-2 max-h-64 overflow-auto scrollbar-custom">
         {loading && <div className="text-xs text-white/60">Loading...</div>}
         {items.length === 0 && !loading && <div className="text-xs text-white/60">No messages yet</div>}

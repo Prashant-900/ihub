@@ -9,7 +9,7 @@ from database import db
 import os
 import uuid
 
-def register_vad(app):
+def register_vad(app, manager=None):
     @app.websocket("/ws-vad")
     async def websocket_vad(websocket: WebSocket):
         await websocket.accept()
@@ -25,6 +25,7 @@ def register_vad(app):
         SILENCE_THRESHOLD = 8
         RMS_THRESHOLD = 0.01
         audio_buffer = []
+        response_mode = 'audio'  # Track current response mode for audio input
 
         try:
             while True:
@@ -37,8 +38,9 @@ def register_vad(app):
                     payload = json.loads(msg)
                     if payload.get("type") == "text":
                         user_text = payload.get('text', '')
+                        response_mode = payload.get('responseMode', 'audio')  # Update current response mode
                         try:
-                            result = pipeline.handle_input(audio_frames=[], user_text=user_text)
+                            result = pipeline.handle_input(audio_frames=[], user_text=user_text, response_mode=response_mode)
                             # send user_message event
                             try:
                                 user_ev = {
@@ -56,6 +58,8 @@ def register_vad(app):
                                     'response': result.get('ai_text'),
                                     'timeline': result.get('timeline'),
                                     'audio_id': result.get('audio_id'),
+                                    'text': result.get('text'),
+                                    'responseMode': response_mode,
                                     'created_at': (result.get('ai_row') or {}).get('created_at') if result.get('ai_row') else None,
                                 }
                                 await websocket.send_text(json.dumps(ai_payload))
@@ -91,6 +95,9 @@ def register_vad(app):
                             speaking = True
                             speech_start = time.time()
                             await websocket.send_text(json.dumps({"event": "speech_started"}))
+                            # Broadcast to all general /ws connections so all frontend components can react
+                            if manager:
+                                await manager.broadcast(json.dumps({"event": "speech_started"}))
                         silence_frames = 0
                     else:
                         if speaking and silence_frames >= SILENCE_THRESHOLD:
@@ -106,7 +113,7 @@ def register_vad(app):
 
                             # Transcribe and handle via pipeline
                             try:
-                                result = pipeline.handle_input(audio_frames=audio_buffer, user_text=None)
+                                result = pipeline.handle_input(audio_frames=audio_buffer, user_text=None, response_mode=response_mode)
                                 # send user_message event
                                 try:
                                     user_ev = {
@@ -124,6 +131,8 @@ def register_vad(app):
                                         'response': result.get('ai_text'),
                                         'timeline': result.get('timeline'),
                                         'audio_id': result.get('audio_id'),
+                                        'text': result.get('text'),
+                                        'responseMode': 'audio',
                                         'duration': duration,
                                         'created_at': (result.get('ai_row') or {}).get('created_at') if result.get('ai_row') else None,
                                     }

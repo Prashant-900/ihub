@@ -1,16 +1,33 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { FiSend, FiMic } from 'react-icons/fi';
 import VoiceVisualizer from './VoiceVisualizer';
+import { ClearText } from '../api_unity/index';
 
 export default function ChatInput({ onSend, pipelineClient }) {
   const [text, setText] = useState('');
   const [showVisualizer, setShowVisualizer] = useState(false);
+  const textInputStartedRef = useRef(false);
+
+  const handleTextChange = (e) => {
+    const newText = e.target.value;
+    // Call ClearText when user starts typing (first character)
+    if (!textInputStartedRef.current && newText.length > 0) {
+      textInputStartedRef.current = true;
+      ClearText();
+    }
+    // Reset flag when text is cleared
+    if (newText.length === 0) {
+      textInputStartedRef.current = false;
+    }
+    setText(newText);
+  };
 
   const handleSubmit = (e) => {
     e.preventDefault();
     if (text.trim()) {
       onSend && onSend(text.trim());
       setText('');
+      textInputStartedRef.current = false;
     }
   };
 
@@ -29,7 +46,7 @@ export default function ChatInput({ onSend, pipelineClient }) {
           className="flex-1 bg-transparent px-4 py-3 text-lg text-white placeholder-white/70 outline-none"
           placeholder="Type a message and press Enter"
           value={text}
-          onChange={(e) => setText(e.target.value)}
+          onChange={handleTextChange}
         />
 
         <button

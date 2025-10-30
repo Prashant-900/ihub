@@ -148,4 +148,4 @@ try:
 except ImportError:
     from .vad_ws import register_vad
 
-register_vad(app)
+register_vad(app, manager)

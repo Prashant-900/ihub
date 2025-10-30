@@ -6,11 +6,14 @@ function sendMessage(gameObject, method, param) {
   if (u && typeof u.SendMessage === 'function') {
     try {
       u.SendMessage(gameObject, method, param);
+      console.log(`[sendMessage] ✓ ${gameObject}.${method}`);
       return true;
-    } catch {
+    } catch (err) {
+      console.error(`[sendMessage] ✗ ${gameObject}.${method}:`, err);
       return false;
     }
   }
+  console.warn('[sendMessage] Unity not ready (SendMessage unavailable)');
   return false;
 }
 
@@ -110,7 +113,33 @@ export function setBackground(spriteName) {
   return sendMessage("bg", 'SetBackground', spriteName);
 }
 
+export function ClearText() {
+  return sendMessage("text", 'ClearAllTextBoxes', '');
+}
 
+export function setTextBox(text, duration, position, type) {
+  try {
+    const jsonData = JSON.stringify({
+      text: text || '',
+      position: position || 0,
+      type: type || 0,
+      duration: duration || 2.0
+    });
+    console.log('[setTextBox] Sending to Unity:', {
+      text,
+      duration,
+      position,
+      type,
+      jsonData
+    });
+    const result = sendMessage("text", 'ShowTextBox', jsonData);
+    console.log('[setTextBox] SendMessage result:', result);
+    return result;
+  } catch (err) {
+    console.error('[setTextBox] Error:', err);
+    return false;
+  }
+}
 
 export default {
   sendTrigger,
@@ -121,6 +150,7 @@ export default {
   updateMouthVolume,
   changeExpression,
   setBackground,
+  setTextBox,
   isUnityReady,
   waitForUnityReady,
 };

@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { FiX } from 'react-icons/fi';
 import { BACKEND_API_WS } from '../constants';
 import { executeAnimationTimeline } from '../api_unity/anim_controller';
+import { ClearText } from '../api_unity/index';
 
 export default function VoiceVisualizer({ onClose, pipelineClient }) {
   const canvasRef = useRef(null);
@@ -21,7 +22,6 @@ export default function VoiceVisualizer({ onClose, pipelineClient }) {
     let stream;
     let scriptNode;
     let sendInterval;
-    let suspended = false;
     let wsVad;
     let pipelineOffRef = { current: null };
 
@@ -124,19 +124,13 @@ export default function VoiceVisualizer({ onClose, pipelineClient }) {
               if (data && data.event === 'speech_ended') {
                 setStatus('Speech ended: ' + Math.round((data.duration || 0) * 1000) + ' ms');
                 if (data.timeline) {
-                  suspended = true;
-                  try {
-                    executeAnimationTimeline(data.timeline).then(() => { suspended = false; }).catch(() => { suspended = false; });
-                  } catch { suspended = false; }
+                  executeAnimationTimeline(data.timeline).catch(() => {});
                 }
               }
               if (data && data.event === 'ai_response') {
                 setStatus('Assistant response received');
                 if (data.timeline) {
-                  suspended = true;
-                  try {
-                    executeAnimationTimeline(data.timeline).then(() => { suspended = false; }).catch(() => { suspended = false; });
-                  } catch { suspended = false; }
+                  executeAnimationTimeline(data.timeline).catch(() => {});
                 }
               }
             });
@@ -155,23 +149,20 @@ export default function VoiceVisualizer({ onClose, pipelineClient }) {
             wsVad.addEventListener('message', (ev) => {
               try {
                 const msg = JSON.parse(ev.data);
-                if (msg && msg.event === 'speech_started') setStatus('Speech started');
+                if (msg && msg.event === 'speech_started') {
+                  setStatus('Speech started');
+                  ClearText();
+                }
                 if (msg && msg.event === 'speech_ended') {
                   setStatus('Speech ended: ' + Math.round((msg.duration || 0) * 1000) + ' ms');
                   if (msg.timeline) {
-                    suspended = true;
-                    try {
-                      executeAnimationTimeline(msg.timeline).then(() => { suspended = false; }).catch(() => { suspended = false; });
-                    } catch { suspended = false; }
+                    executeAnimationTimeline(msg.timeline).catch(() => {});
                   }
                 }
                 if (msg && msg.event === 'ai_response') {
                   setStatus('Assistant response received');
                   if (msg.timeline) {
-                    suspended = true;
-                    try {
-                      executeAnimationTimeline(msg.timeline).then(() => { suspended = false; }).catch(() => { suspended = false; });
-                    } catch { suspended = false; }
+                    executeAnimationTimeline(msg.timeline).catch(() => {});
                   }
                 }
               } catch {
@@ -186,7 +177,6 @@ export default function VoiceVisualizer({ onClose, pipelineClient }) {
         // periodically send collected audio (every 200ms)
         sendInterval = setInterval(() => {
           if (!captureBuffer.length) return;
-          if (suspended) return;
           // concat buffers
           let totalLen = 0;
           for (let b of captureBuffer) totalLen += b.length;

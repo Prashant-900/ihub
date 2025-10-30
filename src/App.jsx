@@ -7,9 +7,11 @@ import WSClient from './ws';
 import { BACKEND_API_WS, BACKEND_API } from './constants';
 import { executeAnimationTimeline } from './api_unity/anim_controller';
 import { playBlobWithUnity } from './utils/audioPipeline';
+import { setTextBox, ClearText } from './api_unity/index';
 
 function App() {
   const [pipelineWsClient, setPipelineWsClient] = useState(null);
+  const [responseMode, setResponseMode] = useState('audio');
   const pipelineWsRef = useRef(null);
 
   useEffect(() => {
@@ -19,7 +21,15 @@ function App() {
     // store in a ref to avoid including in deps
     const clientRef = { current: client };
     client.connect();
-    const off = client.onMessage(() => {});
+    const off = client.onMessage((m) => {
+      // Handle speech_started event broadcast from backend
+      let d = m;
+      try { d = JSON.parse(m); } catch { void 0; }
+      if (d && d.event === 'speech_started') {
+        // Call ClearText globally when voice detection starts
+        ClearText();
+      }
+    });
 
     // pipeline WS (for text messages to pipeline)
     const pipelineUrl = `${base}/ws-vad`;
@@ -31,9 +41,18 @@ function App() {
       try { d = JSON.parse(m); } catch { void 0; }
       try {
         if (d && d.event === 'ai_response') {
+          console.log('[ai_response received]', {
+            response: d.response,
+            responseMode: d.responseMode,
+            hasText: !!d.text,
+            textArray: d.text,
+            hasTimeline: !!d.timeline,
+            hasAudioId: !!d.audio_id
+          });
           (async () => {
             let plannedStart;
-            if (d.audio_id) {
+            // Only fetch and play audio if responseMode is 'audio'
+            if (d.responseMode === 'audio' && d.audio_id) {
               const audioUrl = `${BACKEND_API}/audio/${encodeURIComponent(d.audio_id)}`;
               try {
                 const resp = await fetch(audioUrl);
@@ -47,6 +66,17 @@ function App() {
             if (d.timeline) {
               const startAt = typeof plannedStart === 'number' ? plannedStart : undefined;
               executeAnimationTimeline(d.timeline, startAt ? { startAt } : undefined).catch(() => {});
+            }
+            // Handle text box data
+            if (d.text && Array.isArray(d.text)) {
+              console.log('[setTextBox] Processing', d.text.length, 'text items');
+              d.text.forEach((textItem, idx) => {
+                const { sentence, duration, pos, type } = textItem;
+                console.log(`[setTextBox ${idx}] sentence="${sentence}" duration=${duration} pos=${pos} type=${type}`);
+                setTextBox(sentence, duration, pos, type);
+              });
+            } else {
+              console.log('[setTextBox] No text data in response');
             }
           })();
         }
@@ -65,11 +95,11 @@ function App() {
   return (
     <>
       <ModelBackground />
-  <TopChat wsClient={pipelineWsClient} />
+      <TopChat wsClient={pipelineWsClient} responseMode={responseMode} onResponseModeChange={setResponseMode} />
       <BackgroundPicker />
-      <ChatInput pipelineClient={pipelineWsClient} onSend={(text) => {
-        // send text to pipeline WS as JSON
-        if (pipelineWsRef.current) pipelineWsRef.current.send(JSON.stringify({type: 'text', text}));
+      <ChatInput pipelineClient={pipelineWsClient} responseMode={responseMode} onSend={(text) => {
+        // send text to pipeline WS as JSON with response mode
+        if (pipelineWsRef.current) pipelineWsRef.current.send(JSON.stringify({type: 'text', text, responseMode}));
       }} />
     </>
   );
