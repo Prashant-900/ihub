@@ -25,14 +25,9 @@ class DatabaseManager:
         try:
             self._conn = sqlite3.connect(self.path, check_same_thread=False)
         except Exception as e:
-            print('Failed to open sqlite DB at', self.path, 'error:', e)
-            raise
+            raise RuntimeError(f'Failed to open sqlite DB at {self.path}: {e}')
         self._conn.row_factory = sqlite3.Row
         self._ensure_db()
-        try:
-            print(f"DatabaseManager initialized. DB path={self.path} exists={os.path.exists(self.path)}")
-        except Exception:
-            pass
 
     def _ensure_db(self):
         cur = self._conn.cursor()
@@ -65,10 +60,6 @@ class DatabaseManager:
         rowid = cur.lastrowid
         cur.execute('SELECT * FROM messages WHERE id=?', (rowid,))
         row = cur.fetchone()
-        try:
-            print('Inserted message row id=', rowid, 'role=', role, 'text_len=', len(text or ''), 'audio_id=', audio_id)
-        except Exception:
-            pass
         return dict(row)
 
     def insert_ai_response(self, text, timeline, audio_id=None):
@@ -80,10 +71,6 @@ class DatabaseManager:
         rowid = cur.lastrowid
         cur.execute('SELECT * FROM ai_responses WHERE id=?', (rowid,))
         row = cur.fetchone()
-        try:
-            print('Inserted ai_response id=', rowid, 'text_len=', len(text or ''), 'audio_id=', audio_id)
-        except Exception:
-            pass
         if row:
             return dict(row)
         return None

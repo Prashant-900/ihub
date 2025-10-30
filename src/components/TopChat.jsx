@@ -19,7 +19,7 @@ export default function TopChat({ wsClient, responseMode, onResponseModeChange }
     const fetchHistory = async () => {
       try {
         const res = await fetch(`${BACKEND_API}/admin/conversations`);
-        if (!res.ok) throw new Error('fetch failed');
+        if (!res.ok) throw new Error('Failed to fetch conversation history');
         const data = await res.json();
         if (!mounted) return;
         let list = (data.items || []).map((it, idx) => {
@@ -27,10 +27,10 @@ export default function TopChat({ wsClient, responseMode, onResponseModeChange }
           return { id: it.id, text: it.text, audio_id: it.audio_id, timeline: it.timeline, created_at: it.created_at, _uid: `ai-${it.id ?? 'x'}-${it.created_at ?? ''}-${idx}` };
         });
         // sort oldest -> newest by created_at
-        list = list.sort((a,b) => (a.created_at || '') > (b.created_at || '') ? 1 : -1);
+        list = list.sort((a, b) => (a.created_at || '') > (b.created_at || '') ? 1 : -1);
         setItems(list);
       } catch {
-        void 0;
+        // Failed to load conversation history
       } finally {
         if (mounted) setLoading(false);
       }
@@ -44,7 +44,7 @@ export default function TopChat({ wsClient, responseMode, onResponseModeChange }
     if (!wsClient) return;
     const off = wsClient.onMessage((msg) => {
       let data = msg;
-      try { data = JSON.parse(msg); } catch { void 0; }
+      try { data = JSON.parse(msg); } catch { /* ignore parse errors */ }
       if (data && data.event === 'ai_response') {
         const item = { text: data.response, timeline: data.timeline, audio_id: data.audio_id, created_at: data.created_at || new Date().toISOString(), _uid: makeUid('ai') };
         setItems((s) => [...s, item]);
@@ -71,7 +71,7 @@ export default function TopChat({ wsClient, responseMode, onResponseModeChange }
     try {
       const url = `${BACKEND_API}/audio/${encodeURIComponent(audioId)}`;
       const resp = await fetch(url);
-      if (!resp.ok) throw new Error('audio fetch failed');
+      if (!resp.ok) throw new Error('Failed to fetch audio');
       const arrayBuffer = await resp.arrayBuffer();
       const AudioCtx = window.__globalAudioContext || (window.AudioContext || window.webkitAudioContext);
       const audioCtx = window.__globalAudioContext || new AudioCtx();
@@ -86,10 +86,10 @@ export default function TopChat({ wsClient, responseMode, onResponseModeChange }
         src.start(when);
       } catch {
         // fallback to immediate start
-        try { src.start(0); } catch { void 0; }
+        try { src.start(0); } catch { /* ignore audio start error */ }
       }
     } catch {
-      void 0;
+      // Failed to play audio - error will be silently ignored
     }
   };
 

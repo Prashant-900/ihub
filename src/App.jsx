@@ -24,7 +24,7 @@ function App() {
     const off = client.onMessage((m) => {
       // Handle speech_started event broadcast from backend
       let d = m;
-      try { d = JSON.parse(m); } catch { void 0; }
+      try { d = JSON.parse(m); } catch { /* ignore parse errors */ }
       if (d && d.event === 'speech_started') {
         // Call ClearText globally when voice detection starts
         ClearText();
@@ -35,20 +35,11 @@ function App() {
     const pipelineUrl = `${base}/ws-vad`;
     const pipelineClient = new WSClient(pipelineUrl);
     pipelineClient.connect();
-    // attach a debug listener so we can see incoming pipeline messages
     const offPipeline = pipelineClient.onMessage((m) => {
       let d = m;
-      try { d = JSON.parse(m); } catch { void 0; }
+      try { d = JSON.parse(m); } catch { /* ignore parse errors */ }
       try {
         if (d && d.event === 'ai_response') {
-          console.log('[ai_response received]', {
-            response: d.response,
-            responseMode: d.responseMode,
-            hasText: !!d.text,
-            textArray: d.text,
-            hasTimeline: !!d.timeline,
-            hasAudioId: !!d.audio_id
-          });
           (async () => {
             let plannedStart;
             // Only fetch and play audio if responseMode is 'audio'
@@ -61,7 +52,7 @@ function App() {
                   const res = await playBlobWithUnity(blob, { latencyMs: 120 });
                   plannedStart = res.plannedStart;
                 }
-              } catch { void 0; }
+              } catch { /* ignore audio fetch errors */ }
             }
             if (d.timeline) {
               const startAt = typeof plannedStart === 'number' ? plannedStart : undefined;
@@ -69,18 +60,14 @@ function App() {
             }
             // Handle text box data
             if (d.text && Array.isArray(d.text)) {
-              console.log('[setTextBox] Processing', d.text.length, 'text items');
-              d.text.forEach((textItem, idx) => {
+              d.text.forEach((textItem) => {
                 const { sentence, duration, pos, type } = textItem;
-                console.log(`[setTextBox ${idx}] sentence="${sentence}" duration=${duration} pos=${pos} type=${type}`);
                 setTextBox(sentence, duration, pos, type);
               });
-            } else {
-              console.log('[setTextBox] No text data in response');
             }
           })();
         }
-      } catch { void 0; }
+      } catch { /* ignore response errors */ }
     });
     pipelineWsRef.current = pipelineClient;
     setPipelineWsClient(pipelineClient);

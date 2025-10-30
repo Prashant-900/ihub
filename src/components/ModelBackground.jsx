@@ -13,14 +13,16 @@ export default function ModelBackground() {
 
     const config = {
       arguments: [],
-  dataUrl: buildUrl + '/model.data',
-  frameworkUrl: buildUrl + '/model.framework.js',
-  codeUrl: buildUrl + '/model.wasm',
+      dataUrl: buildUrl + '/model.data',
+      frameworkUrl: buildUrl + '/model.framework.js',
+      codeUrl: buildUrl + '/model.wasm',
       streamingAssetsUrl: 'StreamingAssets',
       companyName: 'DefaultCompany',
       productName: 'live2d',
       productVersion: '1.0',
-      showBanner: () => void 0
+      showBanner: () => {
+        // Disable banner display
+      }
     };
 
     // make canvas fill viewport
@@ -37,7 +39,9 @@ export default function ModelBackground() {
       }
       createFn(canvas, config).then((unityInstance) => {
         window.__unityBgInstance = unityInstance;
-      }).catch(() => void 0);
+      }).catch(() => {
+        // Failed to create Unity instance
+      });
     };
 
     document.body.appendChild(script);

@@ -115,11 +115,11 @@ export default function VoiceVisualizer({ onClose, pipelineClient }) {
         scriptNode.connect(audioCtx.destination);
 
         // If a pipelineClient (WSClient) is provided use it for message I/O
-          if (pipelineClientRef.current) {
+        if (pipelineClientRef.current) {
           try {
-              pipelineOffRef.current = pipelineClientRef.current.onMessage((msg) => {
+            pipelineOffRef.current = pipelineClientRef.current.onMessage((msg) => {
               let data = msg;
-              try { data = JSON.parse(msg); } catch { void 0; }
+              try { data = JSON.parse(msg); } catch { /* ignore parse errors */ }
               if (data && data.event === 'speech_started') setStatus('Speech started');
               if (data && data.event === 'speech_ended') {
                 setStatus('Speech ended: ' + Math.round((data.duration || 0) * 1000) + ' ms');
@@ -135,17 +135,22 @@ export default function VoiceVisualizer({ onClose, pipelineClient }) {
               }
             });
           } catch {
-            void 0;
+            // Failed to attach message listener
           }
         } else {
           // connect to backend ws-vad directly
-          const base = `${BACKEND_API_WS}/ws-vad`;
-          const wsUrl = base;
+          const wsUrl = `${BACKEND_API_WS}/ws-vad`;
           try {
             wsVad = new WebSocket(wsUrl);
-            wsVad.addEventListener('open', () => void 0);
-            wsVad.addEventListener('close', () => void 0);
-            wsVad.addEventListener('error', () => void 0);
+            wsVad.addEventListener('open', () => {
+              // WebSocket connected
+            });
+            wsVad.addEventListener('close', () => {
+              // WebSocket closed
+            });
+            wsVad.addEventListener('error', () => {
+              // WebSocket error
+            });
             wsVad.addEventListener('message', (ev) => {
               try {
                 const msg = JSON.parse(ev.data);
@@ -166,7 +171,7 @@ export default function VoiceVisualizer({ onClose, pipelineClient }) {
                   }
                 }
               } catch {
-                void 0;
+                // Ignore message processing errors
               }
             });
           } catch {
@@ -235,29 +240,29 @@ export default function VoiceVisualizer({ onClose, pipelineClient }) {
           scriptNode.onaudioprocess = null;
         }
       } catch {
-        void 0;
+        // Ignore script node cleanup errors
       }
       try {
         if (sendInterval) clearInterval(sendInterval);
       } catch {
-        void 0;
+        // Ignore interval cleanup errors
       }
       try {
         if (wsVad) {
           wsVad.close();
         }
       } catch {
-        void 0;
+        // Ignore websocket cleanup errors
       }
       try {
         if (stream) stream.getTracks().forEach((t) => t.stop());
       } catch {
-        void 0;
+        // Ignore stream cleanup errors
       }
       try {
         if (audioCtx) audioCtx.close();
       } catch {
-        void 0;
+        // Ignore audio context cleanup errors
       }
     };
 

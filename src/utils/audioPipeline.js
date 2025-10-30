@@ -58,7 +58,7 @@ export async function playBlobWithUnity(blob, opts = {}) {
         break;
       }
     } catch {
-      void 0;
+      // Retry on error
     }
     await new Promise((r) => setTimeout(r, 150 * attempt));
   }
@@ -67,7 +67,7 @@ export async function playBlobWithUnity(blob, opts = {}) {
   const now = audioCtx.currentTime;
   const delayMs = Math.max(0, (plannedStart - now) * 1000);
   setTimeout(() => {
-    try { playVoice(); } catch { void 0; }
+    try { playVoice(); } catch { /* ignore playback error */ }
   }, delayMs);
 
   // schedule mouth updates
@@ -77,7 +77,7 @@ export async function playBlobWithUnity(blob, opts = {}) {
     const whenMs = delayMs + offsetMs;
     setTimeout(() => {
       try { updateMouthVolume(scaled); } catch {
-        // silent
+        // Ignore mouth update error
       }
     }, whenMs);
   }

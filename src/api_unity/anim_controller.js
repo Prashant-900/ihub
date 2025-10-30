@@ -64,7 +64,7 @@ export function executeAnimationTimeline(timeline, opts = {}) {
               changeExpression(exprId);
             }
           } catch {
-            void 0;
+            // Ignore expression execution errors
           }
         }, timeMs);
         _scheduledTimers.push(t);
@@ -78,7 +78,7 @@ export function executeAnimationTimeline(timeline, opts = {}) {
           try {
             sendTrigger(triggerName, triggerSpeed);
           } catch {
-            void 0;
+            // Ignore trigger execution errors
           }
         }, timeMs);
         _scheduledTimers.push(t);

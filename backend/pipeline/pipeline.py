@@ -34,15 +34,9 @@ def get_animation_timeline():
             },
             {
                 "time": 1.0,
-                "expressions": ["Blushing.exp3"],
+                "expressions": ["Sad.exp3"],
                 "triggers": [],
                 "trigger_speed": 1.0,
-            },
-            {
-                "time": 1.0,
-                "expressions": [],
-                "triggers": [],
-                "trigger_speed": 0.8,
             }
         ]
     }
@@ -120,9 +114,9 @@ class Pipeline:
                 try:
                     user_row = db.insert_message('user', user_text or '', None)
                 except Exception:
-                    user_row = None
+                    pass
         except Exception:
-            user_row = None
+            pass
 
         # create AI reply text (placeholder)
         ai_text = (user_text or '')
@@ -148,8 +142,6 @@ class Pipeline:
                         f.write(b'RIFF....WAVEfmt ')
                 except Exception:
                     pass
-                except Exception:
-                    pass
 
         ai_row = None
         try:
@@ -157,9 +149,9 @@ class Pipeline:
                 try:
                     ai_row = db.insert_ai_response(ai_text, timeline, audio_id)
                 except Exception:
-                    ai_row = None
+                    pass
         except Exception:
-            ai_row = None
+            pass
 
         return {
             'ai_text': ai_text,

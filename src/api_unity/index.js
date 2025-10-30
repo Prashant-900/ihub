@@ -6,14 +6,11 @@ function sendMessage(gameObject, method, param) {
   if (u && typeof u.SendMessage === 'function') {
     try {
       u.SendMessage(gameObject, method, param);
-      console.log(`[sendMessage] ✓ ${gameObject}.${method}`);
       return true;
-    } catch (err) {
-      console.error(`[sendMessage] ✗ ${gameObject}.${method}:`, err);
+    } catch {
       return false;
     }
   }
-  console.warn('[sendMessage] Unity not ready (SendMessage unavailable)');
   return false;
 }
 
@@ -125,18 +122,8 @@ export function setTextBox(text, duration, position, type) {
       type: type || 0,
       duration: duration || 2.0
     });
-    console.log('[setTextBox] Sending to Unity:', {
-      text,
-      duration,
-      position,
-      type,
-      jsonData
-    });
-    const result = sendMessage("text", 'ShowTextBox', jsonData);
-    console.log('[setTextBox] SendMessage result:', result);
-    return result;
-  } catch (err) {
-    console.error('[setTextBox] Error:', err);
+    return sendMessage("text", 'ShowTextBox', jsonData);
+  } catch {
     return false;
   }
 }

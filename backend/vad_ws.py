@@ -106,12 +106,6 @@ def register_vad(app, manager=None):
 
                             # Process audio through pipeline
                             # Concatenate audio and create user message record
-                            if len(audio_buffer) == 0:
-                                user_audio = np.array([], dtype=np.float32)
-                            else:
-                                user_audio = np.concatenate(audio_buffer)
-
-                            # Transcribe and handle via pipeline
                             try:
                                 result = pipeline.handle_input(audio_frames=audio_buffer, user_text=None, response_mode=response_mode)
                                 # send user_message event
