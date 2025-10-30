@@ -3,6 +3,9 @@ uvicorn[standard]
 numpy
 torch
 torchaudio
+torchvision
+pillow
+transformers
 silero-vad
 SpeechRecognition
 pydub

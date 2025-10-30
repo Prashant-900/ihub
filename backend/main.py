@@ -148,4 +148,10 @@ try:
 except ImportError:
     from .vad_ws import register_vad
 
+try:
+    from video_ws import register_video
+except ImportError:
+    from .video_ws import register_video
+
 register_vad(app)
+register_video(app)

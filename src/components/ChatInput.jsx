@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
-import { FiSend, FiMic } from 'react-icons/fi';
+import { FiSend, FiMic, FiVideo } from 'react-icons/fi';
 import VoiceVisualizer from './VoiceVisualizer';
+import VideoCall from './VideoCall';
 
 export default function ChatInput({ onSend, pipelineClient }) {
   const [text, setText] = useState('');
   const [showVisualizer, setShowVisualizer] = useState(false);
+  const [showVideoCall, setShowVideoCall] = useState(false);
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -18,11 +20,19 @@ export default function ChatInput({ onSend, pipelineClient }) {
     return <VoiceVisualizer onClose={() => setShowVisualizer(false)} pipelineClient={pipelineClient} />;
   }
 
+  if (showVideoCall) {
+    return <VideoCall onClose={() => setShowVideoCall(false)} />;
+  }
+
   return (
     <div className="fixed left-1/2 transform -translate-x-1/2 bottom-20 z-50 w-full max-w-4xl px-4">
       <form onSubmit={handleSubmit} className="flex items-center bg-white/10 dark:bg-black/20 backdrop-blur-md border border-white/10 dark:border-white/8 rounded-lg shadow-lg px-3 py-3">
         <button type="button" onClick={() => setShowVisualizer(true)} className="p-2 rounded-md text-white/90 hover:bg-white/10" aria-label="audio">
           <FiMic className="h-5 w-5" />
+        </button>
+
+        <button type="button" onClick={() => setShowVideoCall(true)} className="p-2 rounded-md text-white/90 hover:bg-white/10" aria-label="video call">
+          <FiVideo className="h-5 w-5" />
         </button>
 
         <input
