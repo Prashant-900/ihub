@@ -114,15 +114,13 @@ export function ClearText() {
   return sendMessage("text", 'ClearAllTextBoxes', '');
 }
 
-export function setTextBox(text, duration, position, type) {
+export function setTextBox(textData) {
   try {
+    // textData can be an array of text objects or a single object for backward compatibility
     const jsonData = JSON.stringify({
-      text: text || '',
-      position: position || 0,
-      type: type || 0,
-      duration: duration || 2.0
+      textArray: Array.isArray(textData) ? textData : [textData]
     });
-    return sendMessage("text", 'ShowTextBox', jsonData);
+    return sendMessage("text", 'ShowTextBoxArray', jsonData);
   } catch {
     return false;
   }
