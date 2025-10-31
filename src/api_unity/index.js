@@ -110,7 +110,21 @@ export function setBackground(spriteName) {
   return sendMessage("bg", 'SetBackground', spriteName);
 }
 
+export function ClearText() {
+  return sendMessage("text", 'ClearAllTextBoxes', '');
+}
 
+export function setTextBox(textData) {
+  try {
+    // textData can be an array of text objects or a single object for backward compatibility
+    const jsonData = JSON.stringify({
+      textArray: Array.isArray(textData) ? textData : [textData]
+    });
+    return sendMessage("text", 'ShowTextBoxArray', jsonData);
+  } catch {
+    return false;
+  }
+}
 
 export default {
   sendTrigger,
@@ -121,6 +135,7 @@ export default {
   updateMouthVolume,
   changeExpression,
   setBackground,
+  setTextBox,
   isUnityReady,
   waitForUnityReady,
 };

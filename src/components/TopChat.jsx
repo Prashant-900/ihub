@@ -1,8 +1,8 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { FiPlay } from 'react-icons/fi';
+import { FiPlay, FiVolume2, FiMessageSquare } from 'react-icons/fi';
 import { BACKEND_API } from '../constants';
 
-export default function TopChat({ wsClient }) {
+export default function TopChat({ wsClient, responseMode, onResponseModeChange }) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -19,7 +19,7 @@ export default function TopChat({ wsClient }) {
     const fetchHistory = async () => {
       try {
         const res = await fetch(`${BACKEND_API}/admin/conversations`);
-        if (!res.ok) throw new Error('fetch failed');
+        if (!res.ok) throw new Error('Failed to fetch conversation history');
         const data = await res.json();
         if (!mounted) return;
         let list = (data.items || []).map((it, idx) => {
@@ -27,10 +27,10 @@ export default function TopChat({ wsClient }) {
           return { id: it.id, text: it.text, audio_id: it.audio_id, timeline: it.timeline, created_at: it.created_at, _uid: `ai-${it.id ?? 'x'}-${it.created_at ?? ''}-${idx}` };
         });
         // sort oldest -> newest by created_at
-        list = list.sort((a,b) => (a.created_at || '') > (b.created_at || '') ? 1 : -1);
+        list = list.sort((a, b) => (a.created_at || '') > (b.created_at || '') ? 1 : -1);
         setItems(list);
       } catch {
-        void 0;
+        // Failed to load conversation history
       } finally {
         if (mounted) setLoading(false);
       }
@@ -44,7 +44,7 @@ export default function TopChat({ wsClient }) {
     if (!wsClient) return;
     const off = wsClient.onMessage((msg) => {
       let data = msg;
-      try { data = JSON.parse(msg); } catch { void 0; }
+      try { data = JSON.parse(msg); } catch { /* ignore parse errors */ }
       if (data && data.event === 'ai_response') {
         const item = { text: data.response, timeline: data.timeline, audio_id: data.audio_id, created_at: data.created_at || new Date().toISOString(), _uid: makeUid('ai') };
         setItems((s) => [...s, item]);
@@ -71,19 +71,11 @@ export default function TopChat({ wsClient }) {
     try {
       const url = `${BACKEND_API}/audio/${encodeURIComponent(audioId)}`;
       const resp = await fetch(url);
-      if (!resp.ok) throw new Error('audio fetch failed');
+      if (!resp.ok) throw new Error('Failed to fetch audio');
       const arrayBuffer = await resp.arrayBuffer();
       const AudioCtx = window.__globalAudioContext || (window.AudioContext || window.webkitAudioContext);
       const audioCtx = window.__globalAudioContext || new AudioCtx();
       window.__globalAudioContext = audioCtx;
-      try {
-        // Resume if suspended (user gesture may be required in some browsers)
-        if (audioCtx.state === 'suspended' && typeof audioCtx.resume === 'function') {
-          await audioCtx.resume();
-        }
-      } catch {
-        void 0;
-      }
       const decoded = await audioCtx.decodeAudioData(arrayBuffer);
       const src = audioCtx.createBufferSource();
       src.buffer = decoded;
@@ -94,16 +86,39 @@ export default function TopChat({ wsClient }) {
         src.start(when);
       } catch {
         // fallback to immediate start
-        try { src.start(0); } catch { void 0; }
+        try { src.start(0); } catch { /* ignore audio start error */ }
       }
     } catch {
-      void 0;
+      // Failed to play audio - error will be silently ignored
     }
   };
 
   return (
     <div className="fixed top-6 left-6 z-60 text-sm w-80 bg-white/8 dark:bg-black/30 backdrop-blur-md border border-white/10 p-2 rounded-md">
-      <div className="font-medium text-white mb-2">Conversation</div>
+      <div className="flex items-center justify-between mb-2">
+        <div className="font-medium text-white">Conversation</div>
+        <button
+          onClick={() => onResponseModeChange(responseMode === 'audio' ? 'text' : 'audio')}
+          className={`flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors ${
+            responseMode === 'audio'
+              ? 'bg-blue-600 text-white'
+              : 'bg-green-600 text-white'
+          }`}
+          title={`Response mode: ${responseMode}`}
+        >
+          {responseMode === 'audio' ? (
+            <>
+              <FiVolume2 className="w-3 h-3" />
+              <span>Audio</span>
+            </>
+          ) : (
+            <>
+              <FiMessageSquare className="w-3 h-3" />
+              <span>Text</span>
+            </>
+          )}
+        </button>
+      </div>
       <div ref={containerRef} className="flex flex-col gap-2 max-h-64 overflow-auto scrollbar-custom">
         {loading && <div className="text-xs text-white/60">Loading...</div>}
         {items.length === 0 && !loading && <div className="text-xs text-white/60">No messages yet</div>}

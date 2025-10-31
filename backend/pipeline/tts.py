@@ -45,8 +45,7 @@ def synthesize_text(text: str, cache_dir: Optional[str] = None, voice_ref: Optio
                 upload_data = resp.json()
                 if isinstance(upload_data, list) and upload_data:
                     upload_path = upload_data[0]
-        except Exception as e:
-            print('TTS voice reference upload failed:', e)
+        except Exception:
             upload_path = None
 
     # Build file_info only if we have an upload_path

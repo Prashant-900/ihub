@@ -13,3 +13,7 @@ omegaconf
 soundfile
 sqlite3
 requests
+langchain_google_genai
+langchain
+google-generativeai
+langchain-google-genai

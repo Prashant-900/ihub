@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { FiX } from 'react-icons/fi';
 import { BACKEND_API_WS } from '../constants';
 import { executeAnimationTimeline } from '../api_unity/anim_controller';
+import { ClearText } from '../api_unity/index';
 
 export default function VoiceVisualizer({ onClose, pipelineClient }) {
   const canvasRef = useRef(null);
@@ -21,7 +22,6 @@ export default function VoiceVisualizer({ onClose, pipelineClient }) {
     let stream;
     let scriptNode;
     let sendInterval;
-    let suspended = false;
     let wsVad;
     let pipelineOffRef = { current: null };
 
@@ -115,67 +115,63 @@ export default function VoiceVisualizer({ onClose, pipelineClient }) {
         scriptNode.connect(audioCtx.destination);
 
         // If a pipelineClient (WSClient) is provided use it for message I/O
-          if (pipelineClientRef.current) {
+        if (pipelineClientRef.current) {
           try {
-              pipelineOffRef.current = pipelineClientRef.current.onMessage((msg) => {
+            pipelineOffRef.current = pipelineClientRef.current.onMessage((msg) => {
               let data = msg;
-              try { data = JSON.parse(msg); } catch { void 0; }
+              try { data = JSON.parse(msg); } catch { /* ignore parse errors */ }
               if (data && data.event === 'speech_started') setStatus('Speech started');
               if (data && data.event === 'speech_ended') {
                 setStatus('Speech ended: ' + Math.round((data.duration || 0) * 1000) + ' ms');
                 if (data.timeline) {
-                  suspended = true;
-                  try {
-                    executeAnimationTimeline(data.timeline).then(() => { suspended = false; }).catch(() => { suspended = false; });
-                  } catch { suspended = false; }
+                  executeAnimationTimeline(data.timeline).catch(() => {});
                 }
               }
               if (data && data.event === 'ai_response') {
                 setStatus('Assistant response received');
                 if (data.timeline) {
-                  suspended = true;
-                  try {
-                    executeAnimationTimeline(data.timeline).then(() => { suspended = false; }).catch(() => { suspended = false; });
-                  } catch { suspended = false; }
+                  executeAnimationTimeline(data.timeline).catch(() => {});
                 }
               }
             });
           } catch {
-            void 0;
+            // Failed to attach message listener
           }
         } else {
           // connect to backend ws-vad directly
-          const base = `${BACKEND_API_WS}/ws-vad`;
-          const wsUrl = base;
+          const wsUrl = `${BACKEND_API_WS}/ws-vad`;
           try {
             wsVad = new WebSocket(wsUrl);
-            wsVad.addEventListener('open', () => void 0);
-            wsVad.addEventListener('close', () => void 0);
-            wsVad.addEventListener('error', () => void 0);
+            wsVad.addEventListener('open', () => {
+              // WebSocket connected
+            });
+            wsVad.addEventListener('close', () => {
+              // WebSocket closed
+            });
+            wsVad.addEventListener('error', () => {
+              // WebSocket error
+            });
             wsVad.addEventListener('message', (ev) => {
               try {
                 const msg = JSON.parse(ev.data);
-                if (msg && msg.event === 'speech_started') setStatus('Speech started');
+                if (msg && msg.event === 'speech_started') {
+                  setStatus('Speech started');
+                  ClearText();
+                }
                 if (msg && msg.event === 'speech_ended') {
                   setStatus('Speech ended: ' + Math.round((msg.duration || 0) * 1000) + ' ms');
                   if (msg.timeline) {
-                    suspended = true;
-                    try {
-                      executeAnimationTimeline(msg.timeline).then(() => { suspended = false; }).catch(() => { suspended = false; });
-                    } catch { suspended = false; }
+                    executeAnimationTimeline(msg.timeline).catch(() => {});
                   }
                 }
                 if (msg && msg.event === 'ai_response') {
                   setStatus('Assistant response received');
                   if (msg.timeline) {
-                    suspended = true;
-                    try {
-                      executeAnimationTimeline(msg.timeline).then(() => { suspended = false; }).catch(() => { suspended = false; });
-                    } catch { suspended = false; }
+                    executeAnimationTimeline(msg.timeline).catch(() => {});
                   }
                 }
               } catch {
-                void 0;
+                // Ignore message processing errors
               }
             });
           } catch {
@@ -186,7 +182,6 @@ export default function VoiceVisualizer({ onClose, pipelineClient }) {
         // periodically send collected audio (every 200ms)
         sendInterval = setInterval(() => {
           if (!captureBuffer.length) return;
-          if (suspended) return;
           // concat buffers
           let totalLen = 0;
           for (let b of captureBuffer) totalLen += b.length;
@@ -245,29 +240,29 @@ export default function VoiceVisualizer({ onClose, pipelineClient }) {
           scriptNode.onaudioprocess = null;
         }
       } catch {
-        void 0;
+        // Ignore script node cleanup errors
       }
       try {
         if (sendInterval) clearInterval(sendInterval);
       } catch {
-        void 0;
+        // Ignore interval cleanup errors
       }
       try {
         if (wsVad) {
           wsVad.close();
         }
       } catch {
-        void 0;
+        // Ignore websocket cleanup errors
       }
       try {
         if (stream) stream.getTracks().forEach((t) => t.stop());
       } catch {
-        void 0;
+        // Ignore stream cleanup errors
       }
       try {
         if (audioCtx) audioCtx.close();
       } catch {
-        void 0;
+        // Ignore audio context cleanup errors
       }
     };
 
