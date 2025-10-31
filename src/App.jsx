@@ -52,11 +52,15 @@ function App() {
                   const res = await playBlobWithUnity(blob, { latencyMs: 120 });
                   plannedStart = res.plannedStart;
                 }
-              } catch { /* ignore audio fetch errors */ }
+              } catch { 
+                // Ignore audio fetch errors
+              }
             }
             if (d.timeline) {
               const startAt = typeof plannedStart === 'number' ? plannedStart : undefined;
-              executeAnimationTimeline(d.timeline, startAt ? { startAt } : undefined).catch(() => {});
+              executeAnimationTimeline(d.timeline, startAt ? { startAt } : undefined).catch(() => {
+                // Ignore timeline errors
+              });
             }
             // Handle text box data - send entire array at once
             if (d.text && Array.isArray(d.text)) {
@@ -64,7 +68,9 @@ function App() {
             }
           })();
         }
-      } catch { /* ignore response errors */ }
+      } catch { 
+        // Ignore response errors
+      }
     });
     pipelineWsRef.current = pipelineClient;
     setPipelineWsClient(pipelineClient);

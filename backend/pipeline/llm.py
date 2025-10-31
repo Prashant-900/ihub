@@ -1,24 +1,52 @@
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.output_parsers import StructuredOutputParser, ResponseSchema
+from pydantic import BaseModel, Field
 import os
+import json
+from typing import Optional, Dict, List, Any
+from dotenv import load_dotenv
 
-os.environ["GOOGLE_API_KEY"] = "AIzaSyA_uONyo98FoQerYGAnJOoA9ncTHM7wFsI"
+"""
+LLM response generation module using Google Gemini API.
 
-# Define response schemas for strict structure
-response_schemas = [
-    ResponseSchema(
-        name="timeline",
-        description="Array of animation timeline objects. Each object must contain 'time' (float), 'expressions' (list of str), 'triggers' (list of str), and 'trigger_speed' (float)."
-    ),
-    ResponseSchema(
-        name="text_box_data",
-        description="Array of sentence objects, each having 'sentence' (str), 'duration' (float), 'pos' (list of int), and 'type' (int)."
+Generates structured AI responses with animation timelines and text formatting,
+with support for expression-aware context to create emotionally-aware character responses.
+"""
+
+# Load environment variables from .env file
+load_dotenv()
+
+# Initialize Gemini API key from environment variable
+api_key = os.environ.get("GOOGLE_API_KEY")
+if not api_key:
+    raise RuntimeError(
+        "GOOGLE_API_KEY environment variable not set. "
+        "Please configure it in your .env file or environment."
     )
-]
+os.environ["GOOGLE_API_KEY"] = api_key
 
-# Parser for structured JSON output
-output_parser = StructuredOutputParser.from_response_schemas(response_schemas)
+
+# Pydantic models for structured output
+class TextBoxData(BaseModel):
+    """Text box data for character animation display."""
+    text: str = Field(..., description="The text text to display")
+    duration: float = Field(..., description="Duration in seconds to display the text")
+    pos: int = Field(..., description="Position 0-3: 0=top left, 1=top right, 2=left, 3=right")
+    type: int = Field(..., description="Text bubble type 0-3: 0=circle, 1=rectangle, 2=spike, 3=cloud")
+
+
+class TimelineEvent(BaseModel):
+    """Animation timeline event."""
+    time: float = Field(..., description="Time in seconds")
+    expressions: List[str] = Field(..., description="List of expression names to apply")
+    triggers: List[str] = Field(..., description="List of animation trigger names")
+    trigger_speed: float = Field(..., description="Speed multiplier for triggers (0.1-2.0)")
+
+
+class LLMResponse(BaseModel):
+    """Structured LLM response for character animation and dialogue."""
+    timeline: List[TimelineEvent] = Field(..., description="Array of animation timeline events")
+    text_box_data: List[TextBoxData] = Field(..., description="Array of text boxes with dialogue")
 
 # System prompt to guide Gemini
 SYSTEM_PROMPT = """You are an assistant that generates structured text and timeline for an AI character animation.
@@ -67,11 +95,11 @@ Text Bubble Types (use integer 0-3):
 Rules for Response:
 - 'timeline' must be an array of animation states with:
   time (float), expressions (array of expression names), triggers (array of trigger names), and trigger_speed (float 0.1-2.0).
-- 'text_box_data' must be an array of sentence objects with:
-  sentence (string), duration (float, roughly word_count/10.0 but at least 1.0), pos (integer 0-3), and type (integer 0-3).
+- 'text_box_data' must be an array of text objects with:
+  text (string), duration (float, roughly word_count/10.0 but at least 1.0), pos (integer 0-3), and type (integer 0-3).
 - Choose animations that match the emotional tone of the response.
 - Use appropriate triggers and expressions for natural character animation.
-- Vary text box positions and types for visual variety.
+- Vary text box positions and types for visual variety, but don't use each position twice.
 - Timing between animation emotions and text_box_data's duration is synchronised (each text box will appear after prev one duration is over)
 - text should feel coherent and emotionally expressive based on the input."""
 
@@ -85,41 +113,62 @@ prompt = ChatPromptTemplate.from_messages([
 gemini_llm = ChatGoogleGenerativeAI(
     model="gemini-2.0-flash",
     temperature=0.6,
-)
+).with_structured_output(LLMResponse)
 
 
 class LLM:
-    """LLM class for generating structured AI responses with timeline and text box data."""
+    """AI character response generator with animation and expression awareness.
+    
+    Uses Google Gemini API to generate structured responses with animation
+    timelines and text formatting. Supports expression-aware responses that
+    consider the user's detected emotional state.
+    """
     
     def __init__(self):
+        """Initialize LLM service with Gemini model and prompt template."""
         self.llm = gemini_llm
-        self.parser = output_parser
         self.prompt = prompt
     
-    def generate(self, user_input: str) -> dict:
-        """
-        Generate structured response from user input.
+    def generate(
+        self,
+        user_input: str,
+        user_expression: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Generate structured response from user input with optional expression context.
+        
+        Generates a response that includes:
+        - Animation timeline with triggers and expressions
+        - Formatted text boxes with position and styling
+        - Plain text representation
         
         Args:
-            user_input: User's text input
+            user_input: User's text message
+            user_expression: Optional user's detected emotion (e.g., "happy", "sad")
             
         Returns:
             Dictionary with keys:
-            - ai_text: Array of text objects with sentence, duration, pos, type
-            - timeline: Array of animation timeline objects
-            - text: Plain text representation of all sentences joined
+                - 'ai_text': Array of text box objects with text, duration, pos, type
+                - 'timeline': Array of animation events with timing and triggers
+                - 'text': Plain text of all texts joined together
+                
+        Raises:
+            Returns fallback error response if generation fails
         """
         try:
-            formatted_prompt = self.prompt.format_messages(user_input=user_input)
+            # Enhance input with expression context if available
+            input_with_context = user_input
+            if user_expression:
+                input_with_context = f"User Expression: {user_expression}\n\nUser Message: {user_input}"
+            
+            formatted_prompt = self.prompt.format_messages(user_input=input_with_context)
             llm_response = self.llm.invoke(formatted_prompt)
-            parsed_output = self.parser.parse(llm_response.content)
             
-            # Extract text_box_data and timeline
-            text_box_data = parsed_output.get("text_box_data", [])
-            timeline = parsed_output.get("timeline", [])
+            # Parse structured output
+            text_box_data = [box.model_dump() for box in llm_response.text_box_data]
+            timeline = [event.model_dump() for event in llm_response.timeline]
             
-            # Generate plain text from sentences
-            plain_text = ' '.join([item['sentence'] for item in text_box_data]) if text_box_data else ''
+            # Generate plain text representation
+            plain_text = ' '.join([item['text'] for item in text_box_data]) if text_box_data else ''
             
             return {
                 'ai_text': text_box_data,
@@ -127,9 +176,9 @@ class LLM:
                 'text': plain_text
             }
         except Exception as e:
-            # Fallback response on error
+            # Return fallback response on error
             return {
-                'ai_text': [{'sentence': 'Error generating response', 'duration': 1.0, 'pos': 0, 'type': 0}],
+                'ai_text': [{'text': 'Error generating response', 'duration': 1.0, 'pos': 0, 'type': 0}],
                 'timeline': [],
                 'text': 'Error generating response'
             }

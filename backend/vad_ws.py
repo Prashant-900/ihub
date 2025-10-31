@@ -8,6 +8,7 @@ from pipeline.pipeline import Pipeline
 from database import db
 import os
 import uuid
+import video_ws
 
 def register_vad(app, manager=None):
     @app.websocket("/ws-vad")
@@ -39,8 +40,9 @@ def register_vad(app, manager=None):
                     if payload.get("type") == "text":
                         user_text = payload.get('text', '')
                         response_mode = payload.get('responseMode', 'audio')  # Update current response mode
+                        user_expression = video_ws.current_user_expression
                         try:
-                            result = pipeline.handle_input(audio_frames=[], user_text=user_text, response_mode=response_mode)
+                            result = pipeline.handle_input(audio_frames=[], user_text=user_text, response_mode=response_mode, user_expression=user_expression)
                             # send user_message event
                             try:
                                 user_ev = {
@@ -55,7 +57,7 @@ def register_vad(app, manager=None):
                             try:
                                 ai_payload = {
                                     'event': 'ai_response',
-                                    'response': ' '.join([item['sentence'] for item in result.get('ai_text', [])]) if isinstance(result.get('ai_text'), list) else '',
+                                    'response': ' '.join([item['text'] for item in result.get('ai_text', [])]) if isinstance(result.get('ai_text'), list) else '',
                                     'timeline': result.get('timeline'),
                                     'audio_id': result.get('audio_id'),
                                     'text': result.get('ai_text'),
@@ -106,8 +108,9 @@ def register_vad(app, manager=None):
 
                             # Process audio through pipeline
                             # Concatenate audio and create user message record
+                            user_expression = video_ws.current_user_expression
                             try:
-                                result = pipeline.handle_input(audio_frames=audio_buffer, user_text=None, response_mode=response_mode)
+                                result = pipeline.handle_input(audio_frames=audio_buffer, user_text=None, response_mode=response_mode, user_expression=user_expression)
                                 # send user_message event
                                 try:
                                     user_ev = {
@@ -122,7 +125,7 @@ def register_vad(app, manager=None):
                                 try:
                                     ai_payload = {
                                         'event': 'ai_response',
-                                        'response': ' '.join([item['sentence'] for item in result.get('ai_text', [])]) if isinstance(result.get('ai_text'), list) else '',
+                                        'response': ' '.join([item['text'] for item in result.get('ai_text', [])]) if isinstance(result.get('ai_text'), list) else '',
                                         'timeline': result.get('timeline'),
                                         'audio_id': result.get('audio_id'),
                                         'text': result.get('ai_text'),

@@ -3,15 +3,21 @@ from fastapi.staticfiles import StaticFiles
 import os
 from fastapi.middleware.cors import CORSMiddleware
 
-app = FastAPI()
+app = FastAPI(
+    title="iHub AI Character Assistant",
+    description="AI character animation with speech recognition and text-to-speech",
+    version="1.0.0"
+)
 
-# allow any origin for development ease
+# Configure CORS for production
+allowed_origins = os.environ.get('ALLOWED_ORIGINS', '*').split(',')
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=allowed_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization"],
+    max_age=3600
 )
 
 
@@ -55,37 +61,60 @@ app.mount('/cache', StaticFiles(directory=CACHE_DIR), name='cache')
 
 @app.get('/audio/{filename}')
 async def stream_audio(filename: str):
-    """Stream an audio file from the cache directory. Filename should include extension."""
-    # sanitize filename to avoid path traversal
-    safe_name = os.path.basename(filename)
-    path = os.path.join(CACHE_DIR, safe_name)
-
-    # Use FileResponse which supports efficient file serving
+    """Stream an audio file from the cache directory.
+    
+    Args:
+        filename: Audio filename (with or without extension)
+        
+    Returns:
+        FileResponse with appropriate content type
+        
+    Raises:
+        HTTPException(404): When file is not found
+    """
     from fastapi.responses import FileResponse
-
-    # if file not found exactly, try to resolve common extensions or files that start with the id
-    if not os.path.exists(path):
-        candidates = []
-        try:
-            for f in os.listdir(CACHE_DIR):
-                if f.startswith(safe_name):
-                    candidates.append(f)
-        except Exception:
-            candidates = []
-        if candidates:
-            chosen = candidates[0]
-            path = os.path.join(CACHE_DIR, chosen)
-        else:
-            from fastapi import HTTPException
-            raise HTTPException(status_code=404, detail='Audio not found')
-
-    # attempt to set correct mime type based on extension
+    from fastapi import HTTPException
     import mimetypes
-    mime_type, _ = mimetypes.guess_type(path)
+
+    # Sanitize filename to prevent path traversal attacks
+    safe_name = os.path.basename(filename)
+    if not safe_name:
+        raise HTTPException(status_code=400, detail='Invalid filename')
+
+    # Attempt to find file
+    path = os.path.join(CACHE_DIR, safe_name)
+    if not os.path.exists(path):
+        # Try to find files that start with the requested name (handle missing extensions)
+        try:
+            candidates = [f for f in os.listdir(CACHE_DIR) if f.startswith(safe_name)]
+            if candidates:
+                path = os.path.join(CACHE_DIR, candidates[0])
+            else:
+                raise HTTPException(status_code=404, detail='Audio file not found')
+        except (OSError, FileNotFoundError):
+            raise HTTPException(status_code=404, detail='Audio file not found')
+
+    # Verify the file is within cache directory (security check)
     try:
-        return FileResponse(path, media_type=mime_type or 'application/octet-stream', filename=os.path.basename(path))
-    except Exception:
-        return FileResponse(path, filename=os.path.basename(path))
+        resolved_path = os.path.abspath(path)
+        cache_dir_abs = os.path.abspath(CACHE_DIR)
+        if not resolved_path.startswith(cache_dir_abs):
+            raise HTTPException(status_code=403, detail='Access denied')
+    except (OSError, ValueError):
+        raise HTTPException(status_code=403, detail='Access denied')
+
+    # Determine MIME type
+    mime_type, _ = mimetypes.guess_type(path)
+    mime_type = mime_type or 'application/octet-stream'
+
+    try:
+        return FileResponse(
+            path,
+            media_type=mime_type,
+            filename=os.path.basename(path)
+        )
+    except (OSError, FileNotFoundError):
+        raise HTTPException(status_code=404, detail='Audio file not accessible')
 
 
 @app.websocket("/ws")
@@ -148,13 +177,10 @@ try:
 except ImportError:
     from .vad_ws import register_vad
 
-<<<<<<< HEAD
 try:
     from video_ws import register_video
 except ImportError:
     from .video_ws import register_video
 
 register_video(app)
-=======
 register_vad(app, manager)
->>>>>>> main

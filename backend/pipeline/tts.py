@@ -5,24 +5,45 @@ import time
 import uuid
 from typing import Optional
 
-# Configuration for the demo TTS service used by the script
+"""
+Text-to-Speech synthesis module using remote IndexTTS service.
+
+This module provides functions to synthesize text into speech using a remote TTS API,
+with support for voice reference files and local caching of generated audio.
+"""
+
+# Configuration for the IndexTTS demo service
 BASE = "https://indexteam-indextts-2-demo.hf.space"
 UPLOAD_URL = f"{BASE}/gradio_api/upload?upload_id=python_upload"
 QUEUE_URL = f"{BASE}/gradio_api/queue/join?__theme=system"
 DATA_URL_TEMPLATE = f"{BASE}/gradio_api/queue/data?session_hash={{session_hash}}"
 
-# Default voice reference file (relative to this file). If it doesn't exist, the function
-# will attempt to call the TTS endpoint without an uploaded reference (may or may not work
-# depending on the remote service).
+# Default voice reference file path
 DEFAULT_VOICE_REF = os.path.join(os.path.dirname(__file__), '..', 'sample', 'sample_1.mp3')
 
 
-def synthesize_text(text: str, cache_dir: Optional[str] = None, voice_ref: Optional[str] = None, timeout: int = 60) -> str:
-    """
-    Synthesize `text` using the remote TTS demo service and save the resulting audio
-    into `cache_dir` with a generated UUID filename. Returns the audio_id (filename without extension).
-
-    This function mirrors the original procedural script but is safe to call from pipeline code.
+def synthesize_text(
+    text: str,
+    cache_dir: Optional[str] = None,
+    voice_ref: Optional[str] = None,
+    timeout: int = 60
+) -> str:
+    """Synthesize text into speech using remote TTS service.
+    
+    Converts text to speech using the IndexTTS service and caches the resulting
+    audio file locally for efficient retrieval.
+    
+    Args:
+        text: Text to synthesize
+        cache_dir: Directory to cache audio files. Defaults to backend/cache
+        voice_ref: Path to voice reference audio file. Uses default if not provided
+        timeout: Maximum seconds to wait for synthesis. Defaults to 60
+        
+    Returns:
+        Filename (with extension) of the generated audio file in cache_dir
+        
+    Raises:
+        RuntimeError: If synthesis, polling, or download fails
     """
     if cache_dir is None:
         # default to backend/cache relative to repo

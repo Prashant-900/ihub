@@ -1,3 +1,9 @@
+# Environment variables - NEVER commit these
+.env
+.env.local
+.env.*.local
+*.env
+
 # Logs
 logs
 *.log
@@ -7,10 +13,45 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+# Dependencies
 node_modules
 dist
 dist-ssr
 *.local
+
+# Python
+venv
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+/backend/database/*.db-*
+/backend/database/backups/
+
+# Cache and audio
+/backend/cache/*.wav
+/backend/cache/*.mp3
+/backend/cache/
 
 # Editor directories and files
 .vscode/*
@@ -22,7 +63,9 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+*.swp
+*.swo
+*~
 
-venv
-
-*.pyc
+# OS
+Thumbs.db

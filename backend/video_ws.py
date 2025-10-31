@@ -11,124 +11,158 @@ import torch
 import torch.nn.functional as F
 import base64
 import io
+import asyncio
 from PIL import Image
-from transformers import AutoImageProcessor, AutoModelForImageClassification
+from load_model import load_emotion_model, detect_emotion
 
-# Load emotion model once at module level
-emotion_model = None
-processor = None
-
-def load_emotion_model():
-    """Load the emotion detection model from Hugging Face"""
-    global emotion_model, processor
-    if emotion_model is None:
-        try:
-            device = torch.device("cpu")
-            model_name = "dima806/facial_emotions_image_detection"
-            
-            print("🔄 Loading emotion detection model...")
-            processor = AutoImageProcessor.from_pretrained(model_name, use_fast=True)
-            emotion_model = AutoModelForImageClassification.from_pretrained(model_name)
-            emotion_model.eval()
-            
-            # Quantize for CPU speed-up
-            emotion_model = torch.quantization.quantize_dynamic(
-                emotion_model, {torch.nn.Linear}, dtype=torch.qint8
-            )
-            
-            print("✅ Emotion model loaded and quantized successfully")
-        except Exception as e:
-            print(f"❌ Failed to load emotion model: {e}")
-            import traceback
-            traceback.print_exc()
-            return None, None
-    return emotion_model, processor
+# Global state for tracking current user expression
+current_user_expression = None
 
 def register_video(app):
-    """Register video streaming WebSocket endpoint"""
+    """Register video streaming WebSocket endpoint with keep-alive support"""
     
     @app.websocket("/ws-video")
     async def websocket_video(websocket: WebSocket):
-        try:
-            await websocket.accept()
-            print("=" * 60)
-            print("🎥 VIDEO WEBSOCKET CONNECTED")
-            print("=" * 60)
-            
-            # Load emotion model
-            model, img_processor = load_emotion_model()
-            
-            frame_count = 0
-            start_time = time.time()
-        except Exception as e:
-            print(f"❌ Failed to accept WebSocket connection: {e}")
-            return
+        global current_user_expression
         
         try:
-            while True:
+            await websocket.accept()
+        except Exception:
+            return
+        
+        # Load emotion model once per connection
+        try:
+            model, processor = load_emotion_model()
+        except Exception as e:
+            try:
+                await websocket.send_text(json.dumps({"error": "Failed to load emotion model"}))
+            except:
+                pass
+            await websocket.close()
+            return
+        
+        frame_count = 0
+        start_time = time.time()
+        last_activity = time.time()
+        connection_active = True
+        
+        # Keep-alive task to monitor connection
+        async def keep_alive_monitor():
+            nonlocal connection_active, last_activity
+            while connection_active:
                 try:
-                    msg = await websocket.receive_text()
+                    # Check for inactivity timeout (120 seconds)
+                    if time.time() - last_activity > 120:
+                        # Send a status message to keep connection alive
+                        try:
+                            await websocket.send_text(json.dumps({
+                                "type": "keep_alive",
+                                "status": "Connection active",
+                                "uptime": time.time() - start_time
+                            }))
+                        except Exception:
+                            connection_active = False
+                            break
+                    await asyncio.sleep(10)  # Check every 10 seconds
+                except Exception:
+                    connection_active = False
+                    break
+        
+        # Start keep-alive monitor task
+        monitor_task = asyncio.create_task(keep_alive_monitor())
+        
+        try:
+            while connection_active:
+                try:
+                    # Use timeout to check for inactivity
+                    msg = await asyncio.wait_for(websocket.receive_text(), timeout=60.0)
+                    last_activity = time.time()
+                    
+                except asyncio.TimeoutError:
+                    # Timeout but connection still might be valid
+                    try:
+                        await websocket.send_text(json.dumps({
+                            "type": "ping_response",
+                            "status": "alive",
+                            "frames_received": frame_count
+                        }))
+                    except Exception:
+                        connection_active = False
+                        break
+                    continue
+                
                 except WebSocketDisconnect:
-                    print("\n" + "=" * 60)
-                    print("🎥 VIDEO WEBSOCKET DISCONNECTED BY CLIENT")
-                    print("=" * 60)
                     break
                 
                 try:
                     payload = json.loads(msg)
                     
+                    # Handle ping/keep-alive messages
+                    if payload.get("type") == "ping":
+                        try:
+                            await websocket.send_text(json.dumps({
+                                "type": "pong",
+                                "status": "alive"
+                            }))
+                        except Exception:
+                            connection_active = False
+                            break
+                        continue
+                    
                     if payload.get("type") == "video_frame":
                         frame_count += 1
                         
-                        # Decode base64 image
-                        image_data = base64.b64decode(payload.get('data', ''))
-                        image = Image.open(io.BytesIO(image_data)).convert('RGB')
-                        
-                        # Run emotion detection on frame
-                        if model is not None and img_processor is not None:
-                            try:
-                                # Preprocess image using the processor
-                                inputs = img_processor(images=image, return_tensors="pt")
-                                
-                                # Run inference
-                                with torch.no_grad():
-                                    outputs = model(**inputs)
-                                
-                                # Get predictions
-                                logits = outputs.logits
-                                probs = F.softmax(logits, dim=-1)[0]
-                                pred_idx = torch.argmax(probs).item()
-                                label = model.config.id2label[pred_idx]
-                                confidence = probs[pred_idx].item()
-                                
-                                # Print the emotion detection result
-                                print(f"🎭 Frame {frame_count} - Emotion: {label} ({confidence*100:.2f}%)")
-                                
-                            except Exception as e:
-                                print(f"⚠️  Error running emotion model: {e}")
-                        
-                        # Send acknowledgment back to client
-                        await websocket.send_text(json.dumps({
-                            "status": f"Processing frame {frame_count}",
-                            "frames_received": frame_count
-                        }))
+                        try:
+                            # Decode base64 image
+                            image_data = base64.b64decode(payload.get('data', ''))
+                            image = Image.open(io.BytesIO(image_data)).convert('RGB')
+                            
+                            # Run emotion detection on frame
+                            if model is not None and processor is not None:
+                                try:
+                                    result = detect_emotion(image, model, processor)
+                                    current_user_expression = result.get('label')
+                                    await websocket.send_text(json.dumps({
+                                        "status": f"Processing frame {frame_count}",
+                                        "emotion": result.get('label'),
+                                        "confidence": result.get('confidence'),
+                                        "frames_received": frame_count
+                                    }))
+                                except Exception as e:
+                                    try:
+                                        await websocket.send_text(json.dumps({
+                                            "status": f"Processing frame {frame_count}",
+                                            "frames_received": frame_count
+                                        }))
+                                    except Exception:
+                                        connection_active = False
+                                        break
+                            else:
+                                try:
+                                    await websocket.send_text(json.dumps({
+                                        "status": f"Processing frame {frame_count}",
+                                        "frames_received": frame_count
+                                    }))
+                                except Exception:
+                                    connection_active = False
+                                    break
+                        except Exception as e:
+                            # Image processing error - continue
+                            pass
                     
-                except json.JSONDecodeError as e:
-                    print(f"⚠️  Error decoding JSON: {e}")
+                except json.JSONDecodeError:
                     continue
                 except Exception as e:
-                    print(f"⚠️  Error processing video frame: {e}")
-                    continue
+                    # Other parsing errors
+                    pass
                     
         except Exception as e:
-            print(f"\n❌ Video WebSocket error: {e}")
+            pass
         finally:
-            total_time = time.time() - start_time
-            print("\n" + "=" * 60)
-            print("📊 VIDEO SESSION SUMMARY")
-            print("=" * 60)
-            print(f"   • Total frames processed: {frame_count}")
-            print(f"   • Session duration: {total_time:.2f} seconds")
-            if total_time > 0:
-                print(f"   • Average FPS: {frame_count / total_time:.2f}")
-            print("=" * 60 + "\n")
+            connection_active = False
+            current_user_expression = None
+            monitor_task.cancel()
+            try:
+                await websocket.close()
+            except:
+                pass

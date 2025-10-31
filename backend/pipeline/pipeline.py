@@ -23,7 +23,7 @@ class Pipeline:
         self.stt = STT(device=device)
         self.llm = LLM()
 
-    def handle_input(self, audio_frames=None, user_text=None, response_mode='audio'):
+    def handle_input(self, audio_frames=None, user_text=None, response_mode='audio', user_expression=None):
         # Step 1: Transcribe audio if needed
         if user_text is None:
             if not audio_frames:
@@ -35,17 +35,17 @@ class Pipeline:
                 except Exception:
                     user_text = ''
 
-        # Step 2: Get structured response from LLM
-        llm_response = self.llm.generate(user_text)
+        # Step 2: Get structured response from LLM with optional user expression context
+        llm_response = self.llm.generate(user_text, user_expression=user_expression)
         ai_text = llm_response["ai_text"]
         timeline = llm_response["timeline"]
         text = llm_response["text"]
 
-        # Step 3: Persist user message
+        # Step 3: Persist user message with expression
         user_row, ai_row = None, None
         try:
             if db:
-                user_row = db.insert_message('user', user_text or '', None)
+                user_row = db.insert_message('user', user_text or '', expression=user_expression)
         except Exception:
             pass
 
@@ -56,8 +56,8 @@ class Pipeline:
 
         if response_mode == 'audio':
             try:
-                sentences = ' '.join([s['sentence'] for s in ai_text])
-                filename = synthesize_text(sentences, cache_dir)
+                texts = ' '.join([s['text'] for s in ai_text])
+                filename = synthesize_text(texts, cache_dir)
                 audio_id = os.path.splitext(filename)[0]
             except Exception:
                 audio_id = str(uuid.uuid4())
@@ -80,4 +80,5 @@ class Pipeline:
             'user_row': user_row,
             'ai_row': ai_row,
             'user_text': user_text,
+            'user_expression': user_expression,
         }

@@ -17,3 +17,8 @@ langchain_google_genai
 langchain
 google-generativeai
 langchain-google-genai
+pillow
+transformers
+dotenv
+hf_xet
+torchvision
